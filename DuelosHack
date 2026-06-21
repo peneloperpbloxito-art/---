@@ -1,14 +1,14 @@
 -- ============================================================
 -- 🔥 DUELOS HACK v3.2.6 (MÓVIL / DELTA) 🔥
 -- CLON EXACTO DEL MENÚ "MURDERERS VS SHERIFFS"
--- AIMBOT MEJORADO CON VirtualInputManager
+-- CON AIMBOT CORREGIDO Y GUI PERSISTENTE EN CoreGui
 -- ============================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local VirtualInput = game:GetService("VirtualInputManager")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -70,7 +70,7 @@ local function ToggleKnife(state)
     end
 end
 
--- ===================== AIMBOT (CON VirtualInputManager) =====================
+-- ===================== AIMBOT (CORREGIDO PARA DELTA) =====================
 local function GetClosestEnemy()
     local enemies = {}
     for _, player in ipairs(Players:GetPlayers()) do
@@ -88,7 +88,8 @@ local function GetClosestEnemy()
     for _, enemy in ipairs(enemies) do
         local head = enemy.Character:FindFirstChild("Head")
         if head then
-            local pos, _ = Camera:WorldToScreenPoint(head.Position)
+            local pos, onScreen = Camera:WorldToScreenPoint(head.Position)
+            if not onScreen then continue
             local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(cx, cy)).Magnitude
             if dist < closestDist then
                 closestDist = dist
@@ -99,23 +100,41 @@ local function GetClosestEnemy()
     return closest
 end
 
--- Disparar usando VirtualInputManager (más compatible en móvil)
+-- Disparar usando los métodos de Delta
 local function FireWeapon()
-    -- Presionar y soltar clic izquierdo
-    VirtualInput:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, 0, true, 1, 0)
-    task.wait(0.05)
-    VirtualInput:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, 0, false, 1, 0)
+    -- Intentar diferentes formas de disparar
+    if mouse1click then
+        mouse1click()
+    elseif syn and syn.mouse_click then
+        syn.mouse_click()
+    else
+        -- Fallback con VirtualInputManager
+        local VIM = game:GetService("VirtualInputManager")
+        VIM:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, 0, true, 1, 0)
+        task.wait(0.05)
+        VIM:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, 0, false, 1, 0)
+    end
 end
 
--- Mover el mouse usando VirtualInputManager (movimiento absoluto)
+-- Mover el mouse usando métodos de Delta
 local function MoveMouseTo(target, smooth)
     if not target then return end
     local head = target.Character:FindFirstChild("Head")
     if not head then return end
-    local pos, _ = Camera:WorldToScreenPoint(head.Position)
+    local pos, onScreen = Camera:WorldToScreenPoint(head.Position)
+    if not onScreen then return end
+
     if not smooth then
         -- Movimiento instantáneo
-        VirtualInput:SendMouseMoveEvent(pos.X, pos.Y, 0)
+        if mousemoveabs then
+            mousemoveabs(pos.X, pos.Y)
+        elseif syn and syn.mouse_move then
+            syn.mouse_move(pos.X, pos.Y)
+        else
+            -- Fallback con VirtualInputManager
+            local VIM = game:GetService("VirtualInputManager")
+            VIM:SendMouseMoveEvent(pos.X, pos.Y, 0)
+        end
     else
         -- Movimiento suave (lerp)
         local cx, cy = Mouse.X, Mouse.Y
@@ -123,10 +142,18 @@ local function MoveMouseTo(target, smooth)
             local a = i / 10
             local tx = cx + (pos.X - cx) * a
             local ty = cy + (pos.Y - cy) * a
-            VirtualInput:SendMouseMoveEvent(tx, ty, 0)
+            if mousemoveabs then
+                mousemoveabs(tx, ty)
+            elseif syn and syn.mouse_move then
+                syn.mouse_move(tx, ty)
+            else
+                local VIM = game:GetService("VirtualInputManager")
+                VIM:SendMouseMoveEvent(tx, ty, 0)
+            end
             task.wait(0.01)
         end
     end
+
     -- Si estamos en modo bannable, disparamos automáticamente
     if CONFIG.AimbotBannable then
         FireWeapon()
@@ -334,13 +361,15 @@ local function ApplySmoothTextures(state)
     print("🧊 Texturas Lisas: " .. (state and "ON" or "OFF"))
 end
 
--- ===================== CONSTRUCCIÓN DE LA GUI (CON X GIGANTE) =====================
+-- ===================== CONSTRUCCIÓN DE LA GUI (PERSISTENTE EN CoreGui) =====================
 local function CreateUI()
+    -- Usamos CoreGui para que no se destruya al respawnear
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "DuelosHackUI"
-    screenGui.Parent = LocalPlayer.PlayerGui
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = CoreGui
 
-    -- ICONO FLOTANTE (engranaje)
+    -- ICONO FLOTANTE (engranaje) - SIEMPRE VISIBLE
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 55, 0, 55)
     toggleBtn.Position = UDim2.new(0, 10, 0.5, -27)
@@ -805,15 +834,26 @@ ApplyGhostInvisibility(false)
 ApplyMovementMods()
 SetupInfiniteJump()
 
+local lastTarget = nil
 RunService.RenderStepped:Connect(function()
     UpdateEsp()
 
-    if CONFIG.AimbotBannable then
+    if CONFIG.AimbotBannable or CONFIG.AimbotLegit then
         local target = GetClosestEnemy()
-        if target then MoveMouseTo(target, false) end
-    elseif CONFIG.AimbotLegit then
-        local target = GetClosestEnemy()
-        if target then MoveMouseTo(target, true) end
+        if target then
+            -- Mostrar en consola a quién apunta (para debug)
+            if target ~= lastTarget then
+                print("🎯 Apuntando a: " .. target.Name)
+                lastTarget = target
+            end
+            local smooth = CONFIG.AimbotLegit and not CONFIG.AimbotBannable
+            MoveMouseTo(target, smooth)
+        else
+            if lastTarget then
+                print("🎯 Sin enemigos cercanos")
+                lastTarget = nil
+            end
+        end
     end
 end)
 
@@ -823,5 +863,6 @@ print("🔥 DUELOS HACK v3.2.6 (MÓVIL) CARGADO")
 print("👤 By Vaxxzu")
 print("🔑 Tecla Invisible: " .. CONFIG.InvisibleKey)
 print("❌ Botón de Cierre (X) ahora es GRANDE y VISIBLE")
-print("🎯 Aimbot actualizado con VirtualInputManager para móvil")
-print("💡 PRESIONA CUALQUIER BOTÓN PARA VER MENSAJES EN CONSOLA")
+print("🎯 Aimbot corregido para Delta (usa mousemoveabs / syn.mouse_move)")
+print("💡 La GUI es persistente en CoreGui, no desaparece al respawnear")
+print("💡 El botón flotante (⚙️) siempre está visible")
