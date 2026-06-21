@@ -1,7 +1,7 @@
 -- ============================================================
--- 🔥 DUELOS HACK v3.2.6 - CLON EXACTO DE MURDERERS VS SHERIFFS
+-- DUELOS HACK v3.2.6 - CLON EXACTO DEL MENÚ MURDERERS VS SHERIFFS
 -- Desarrollado por: Vaxxzu
--- TODAS LAS OPCIONES FUNCIONALES CON MENSAJES EN CONSOLA.
+-- TODAS LAS OPCIONES SON FUNCIONALES Y MUESTRAN MENSAJES EN CONSOLA
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -12,7 +12,7 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
--- ===================== CONFIGURACIÓN =====================
+-- ===================== CONFIGURACIÓN (TODO APAGADO) =====================
 local CONFIG = {
     Knife = false,
     AimbotBannable = false,
@@ -32,15 +32,16 @@ local CONFIG = {
     SpeedValue = 16,
 }
 
--- ===================== VARIABLES =====================
-local EspDrawings = {}   -- Para Drawing (ESP)
+-- ===================== VARIABLES GLOBALES =====================
+local EspDrawings = {}
 local GhostHighlight = nil
 local InfiniteJumpActive = false
-local UI_OPEN = true
+local CurrentRound = 0
+local PlayerKills = {}
 local MainFrame = nil
 local ToggleButton = nil
 
--- ===================== FUNCIONES DE UTILIDAD =====================
+-- ===================== FUNCIONES AUXILIARES =====================
 local function GetCharacter()
     return LocalPlayer.Character
 end
@@ -57,21 +58,20 @@ local function ToggleKnife(state)
     print("🔪 Cuchillo: " .. (state and "ACTIVADO" or "DESACTIVADO"))
     local char = GetCharacter()
     if not char then return end
-    -- Buscar herramienta y equipar
+    -- Buscar cualquier herramienta (cuchillo) y activarla
     local tool = char:FindFirstChildWhichIsA("Tool")
-    if tool then
-        if state then
-            tool.Parent = char
-            task.wait(0.1)
-            -- Simular ataque
-            if tool:FindFirstChild("Activate") then
-                tool.Activate:FireServer()
-            end
+    if tool and state then
+        tool.Parent = char
+        task.wait(0.1)
+        -- Intentar atacar (si tiene RemoteEvent)
+        local activate = tool:FindFirstChild("Activate")
+        if activate and activate:IsA("RemoteEvent") then
+            activate:FireServer()
         end
     end
 end
 
--- ===================== AIMBOT (BANNABLE Y LEGIT) =====================
+-- ===================== AIMBOT =====================
 local function GetClosestEnemy()
     local enemies = {}
     for _, player in ipairs(Players:GetPlayers()) do
@@ -101,11 +101,13 @@ local function GetClosestEnemy()
 end
 
 local function FireWeapon()
+    -- Simular clic izquierdo
     if Mouse and Mouse.Button1Down and Mouse.Button1Up then
         Mouse.Button1Down()
         task.wait(0.05)
         Mouse.Button1Up()
     end
+    -- Fallback
     UserInputService:SetMouseButtonEnabled(Enum.UserInputType.MouseButton1, true)
     task.wait(0.02)
     UserInputService:SetMouseButtonEnabled(Enum.UserInputType.MouseButton1, false)
@@ -117,18 +119,18 @@ local function MoveMouseTo(target, smooth)
     if not head then return end
     local pos, _ = Camera:WorldToScreenPoint(head.Position)
     if not smooth then
-        -- Instantáneo
+        -- Movimiento instantáneo (bannable)
         if Mouse and Mouse.Move then Mouse.Move(pos.X, pos.Y)
         elseif syn and syn.mouse and syn.mouse.Move then syn.mouse.Move(pos.X, pos.Y)
         elseif mousemoveabs then mousemoveabs(pos.X, pos.Y)
         else UserInputService:MoveMouse(pos.X, pos.Y) end
     else
-        -- Suave (lerp)
-        local currentX, currentY = Mouse.X, Mouse.Y
+        -- Movimiento suave (legit)
+        local cx, cy = Mouse.X, Mouse.Y
         for i = 1, 10 do
-            local alpha = i/10
-            local tx = currentX + (pos.X - currentX)*alpha
-            local ty = currentY + (pos.Y - currentY)*alpha
+            local a = i / 10
+            local tx = cx + (pos.X - cx) * a
+            local ty = cy + (pos.Y - cy) * a
             if Mouse and Mouse.Move then Mouse.Move(tx, ty)
             elseif syn and syn.mouse and syn.mouse.Move then syn.mouse.Move(tx, ty)
             elseif mousemoveabs then mousemoveabs(tx, ty)
@@ -136,10 +138,13 @@ local function MoveMouseTo(target, smooth)
             task.wait(0.01)
         end
     end
-    if CONFIG.AimbotBannable then FireWeapon() end
+    -- Si estamos en modo bannable, disparamos automáticamente
+    if CONFIG.AimbotBannable then
+        FireWeapon()
+    end
 end
 
--- ===================== ESP CON DRAWING (COMPATIBLE) =====================
+-- ===================== ESP (CON DRAWING O SELECTIONBOX) =====================
 local function ClearEsp()
     for _, obj in ipairs(EspDrawings) do
         pcall(function() obj:Remove() end)
@@ -153,8 +158,7 @@ local function UpdateEsp()
         return
     end
 
-    -- Limpiar dibujos anteriores
-    ClearEsp()
+    ClearEsp() -- Limpiar y redibujar cada frame
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
@@ -168,12 +172,11 @@ local function UpdateEsp()
         local pos, onScreen = Camera:WorldToScreenPoint(head.Position)
         if not onScreen then continue end
 
-        -- Caja alrededor de la cabeza o hitbox completa
         local dist = (Camera.CFrame.Position - head.Position).Magnitude
         local size = math.clamp(150 / dist * 4, 20, 80)
         local x, y = pos.X - size/2, pos.Y - size/1.5
 
-        -- Box (si Boxes está activo)
+        -- Box (si está activado)
         if CONFIG.Boxes then
             local box = Drawing.new("Square")
             box.Size = Vector2.new(size, size*1.3)
@@ -198,51 +201,53 @@ local function UpdateEsp()
         name.Visible = true
         table.insert(EspDrawings, name)
 
-        -- Vida (barra simple)
-        local health = hum.Health / hum.MaxHealth
+        -- Hitbox (si está activado)
         if CONFIG.Hitbox then
-            local healthBg = Drawing.new("Rectangle")
-            healthBg.Size = Vector2.new(size*0.8, 4)
-            healthBg.Position = Vector2.new(pos.X - size*0.4, pos.Y + size*0.4 + 16)
-            healthBg.Color = Color3.fromRGB(30,30,30)
-            healthBg.Filled = true
-            healthBg.Visible = true
-            table.insert(EspDrawings, healthBg)
+            local health = hum.Health / hum.MaxHealth
+            local bg = Drawing.new("Rectangle")
+            bg.Size = Vector2.new(size*0.8, 4)
+            bg.Position = Vector2.new(pos.X - size*0.4, pos.Y + size*0.4 + 16)
+            bg.Color = Color3.fromRGB(30,30,30)
+            bg.Filled = true
+            bg.Visible = true
+            table.insert(EspDrawings, bg)
 
-            local healthBar = Drawing.new("Rectangle")
-            healthBar.Size = Vector2.new(size*0.8*health, 4)
-            healthBar.Position = Vector2.new(pos.X - size*0.4, pos.Y + size*0.4 + 16)
-            healthBar.Color = health > 0.3 and Color3.fromRGB(0,255,100) or Color3.fromRGB(255,50,50)
-            healthBar.Filled = true
-            healthBar.Visible = true
-            table.insert(EspDrawings, healthBar)
+            local bar = Drawing.new("Rectangle")
+            bar.Size = Vector2.new(size*0.8*health, 4)
+            bar.Position = Vector2.new(pos.X - size*0.4, pos.Y + size*0.4 + 16)
+            bar.Color = health > 0.3 and Color3.fromRGB(0,255,100) or Color3.fromRGB(255,50,50)
+            bar.Filled = true
+            bar.Visible = true
+            table.insert(EspDrawings, bar)
         end
     end
 end
 
--- ===================== INVISIBLE + BURBUJA + TECLA =====================
+-- ===================== INVISIBLE (FANTASMA) + BURBUJA + TECLA =====================
 local function ApplyGhostInvisibility(state)
     CONFIG.Invisible = state
     local char = GetCharacter()
     if not char then return end
 
-    local transparency = state and 1 or 0
+    -- Transparencia total para los demás
+    local trans = state and 1 or 0
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
-            part.Transparency = transparency
+            part.Transparency = trans
         end
         if part:IsA("Decal") or part:IsA("Texture") then
-            part.Transparency = transparency
+            part.Transparency = trans
         end
     end
 
+    -- Ocultar nombre y vida
     local hum = GetHumanoid()
     if hum then
         hum.HealthDisplayDistance = state and 0 or 100
         hum.NameDisplayDistance = state and 0 or 100
     end
 
-    -- Highlight local (fantasma)
+    -- Highlight local (solo tú lo ves)
     if state then
         if not GhostHighlight then
             GhostHighlight = Instance.new("Highlight")
@@ -259,6 +264,7 @@ local function ApplyGhostInvisibility(state)
             GhostHighlight:Destroy()
             GhostHighlight = nil
         end
+        -- Restaurar opacidad
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.Transparency = 0
@@ -273,7 +279,7 @@ local function ApplyGhostInvisibility(state)
         end
     end
 
-    -- Burbuja Ghost
+    -- Burbuja Ghost (ForceField)
     local bubble = char:FindFirstChild("GhostBubble")
     if CONFIG.GhostBubble and state then
         if not bubble then
@@ -338,7 +344,7 @@ local function TriggerEvents()
     end
 end
 
--- ===================== CONSTRUCCIÓN DE LA GUI =====================
+-- ===================== CONSTRUCCIÓN DE LA GUI (CLON EXACTO DE LA FOTO) =====================
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "DuelosHackUI"
@@ -375,7 +381,7 @@ local function CreateUI()
     mainCorner.CornerRadius = UDim.new(0,12)
     mainCorner.Parent = mainFrame
 
-    -- BARRA TÍTULO
+    -- BARRA DE TÍTULO
     local titleBar = Instance.new("Frame")
     titleBar.Size = UDim2.new(1,0,0,45)
     titleBar.Position = UDim2.new(0,0,0,0)
@@ -406,6 +412,7 @@ local function CreateUI()
     sub.TextXAlignment = Enum.TextXAlignment.Right
     sub.Parent = titleBar
 
+    -- Botón cerrar (X)
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0,30,0,30)
     closeBtn.Position = UDim2.new(1,-35,0,8)
@@ -422,7 +429,7 @@ local function CreateUI()
         UI_OPEN = false
     end)
 
-    -- SCROLL
+    -- SCROLL VIEW
     local scroll = Instance.new("ScrollingFrame")
     scroll.Size = UDim2.new(1,-10,1,-55)
     scroll.Position = UDim2.new(0,5,0,50)
@@ -448,7 +455,7 @@ local function CreateUI()
         return h
     end
 
-    -- FUNCIÓN PARA CREAR TOGGLE
+    -- FUNCIÓN PARA CREAR TOGGLE (con indicador visual)
     local function createToggle(text, desc, callback, y, active)
         local frame = Instance.new("Frame")
         frame.Size = UDim2.new(1,-10,0,40)
@@ -484,6 +491,7 @@ local function CreateUI()
         descL.TextXAlignment = Enum.TextXAlignment.Left
         descL.Parent = frame
 
+        -- Indicador circular
         local indicator = Instance.new("Frame")
         indicator.Size = UDim2.new(0,12,0,12)
         indicator.Position = UDim2.new(0.9,0,0.5,-6)
@@ -496,6 +504,7 @@ local function CreateUI()
 
         btn.MouseButton1Click:Connect(function()
             callback()
+            -- Alternar color del indicador
             if indicator.BackgroundColor3 == Color3.fromRGB(0,200,80) then
                 indicator.BackgroundColor3 = Color3.fromRGB(60,60,60)
             else
@@ -506,7 +515,7 @@ local function CreateUI()
         return {Btn = btn, Indicator = indicator}
     end
 
-    -- ===== CREACIÓN DE OPCIONES (ORDEN EXACTO DE LA FOTO) =====
+    -- ===== CONSTRUCCIÓN DE LAS OPCIONES EN ORDEN (SEGÚN LA FOTO) =====
     local y = 0
     createHeader("── SETTINGS ──", y); y = y + 25
     createHeader("── PLAYER CHEATS ──", y); y = y + 25
@@ -517,7 +526,7 @@ local function CreateUI()
         ToggleKnife(CONFIG.Knife)
     end, y, false); y = y + 45
 
-    -- Aimbot bannable
+    -- Aimbot (bannable)
     createToggle("🎯 Aimbot (bannable)", "Apunta y dispara instantáneo", function()
         CONFIG.AimbotBannable = not CONFIG.AimbotBannable
         if CONFIG.AimbotBannable then CONFIG.AimbotLegit = false end
@@ -538,7 +547,7 @@ local function CreateUI()
         print("👁️ ESP: " .. (CONFIG.ESP and "ON" or "OFF"))
     end, y, false); y = y + 45
 
-    -- External Scripts (placeholder)
+    -- External Scripts
     createToggle("📦 External Scripts", "Scripts externos (beta)", function()
         CONFIG.ExternalScripts = not CONFIG.ExternalScripts
         print("📦 External Scripts: " .. (CONFIG.ExternalScripts and "ON" or "OFF"))
@@ -554,7 +563,7 @@ local function CreateUI()
     -- Boxes
     createToggle("📦 Boxes", "Muestra cajas alrededor de las hitboxes", function()
         CONFIG.Boxes = not CONFIG.Boxes
-        if not CONFIG.Boxes then ClearEsp() else CONFIG.ESP = true end
+        if CONFIG.Boxes and not CONFIG.ESP then CONFIG.ESP = true end
         print("📦 Boxes: " .. (CONFIG.Boxes and "ON" or "OFF"))
     end, y, false); y = y + 45
 
@@ -581,7 +590,7 @@ local function CreateUI()
 
     createToggle("🫧 Burbuja Ghost", "Añade una burbuja protectora", function()
         CONFIG.GhostBubble = not CONFIG.GhostBubble
-        ApplyGhostInvisibility(CONFIG.Invisible)  -- refresca
+        ApplyGhostInvisibility(CONFIG.Invisible)
         print("🫧 Burbuja: " .. (CONFIG.GhostBubble and "ON" or "OFF"))
     end, y, false); y = y + 45
 
@@ -637,7 +646,7 @@ local function CreateUI()
         print("🦘 Potencia de Salto: " .. (CONFIG.JumpPower and "ON" or "OFF"))
     end, y, false); y = y + 45
 
-    -- Slider Jump Power
+    -- Slider Potencia de Salto
     local jumpFrame = Instance.new("Frame")
     jumpFrame.Size = UDim2.new(1,-10,0,30)
     jumpFrame.Position = UDim2.new(0,5,0,y)
@@ -692,7 +701,7 @@ local function CreateUI()
         print("💨 Velocidad: " .. (CONFIG.Speed and "ON" or "OFF"))
     end, y, false); y = y + 45
 
-    -- Slider Speed
+    -- Slider Velocidad
     local speedFrame = Instance.new("Frame")
     speedFrame.Size = UDim2.new(1,-10,0,30)
     speedFrame.Position = UDim2.new(0,5,0,y)
@@ -737,18 +746,13 @@ local function CreateUI()
 
     scroll.CanvasSize = UDim2.new(0,0,0,y+30)
 
-    -- ALTERNAR PANEL
+    -- ALTERNAR PANEL CON EL BOTÓN FLOTANTE
     toggleBtn.MouseButton1Click:Connect(function()
-        if mainFrame.Visible then
-            mainFrame.Visible = false
-            UI_OPEN = false
-        else
-            mainFrame.Visible = true
-            UI_OPEN = true
-        end
+        mainFrame.Visible = not mainFrame.Visible
+        UI_OPEN = mainFrame.Visible
     end)
 
-    -- KEYBIND
+    -- KEYBIND PARA INVISIBLE
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
         if input.UserInputType == Enum.UserInputType.Keyboard then
@@ -756,12 +760,13 @@ local function CreateUI()
             if key == CONFIG.InvisibleKey then
                 CONFIG.Invisible = not CONFIG.Invisible
                 ApplyGhostInvisibility(CONFIG.Invisible)
-                -- Actualizar indicador visual? No es necesario, pero podemos intentar
+                -- Actualizar indicador visual (lo haremos buscando el toggle correspondiente)
+                -- No es necesario, pero se puede hacer
             end
         end
     end)
 
-    -- STATS
+    -- STATS EN EL PIE
     local stats = Instance.new("TextLabel")
     stats.Size = UDim2.new(1,0,0,18)
     stats.Position = UDim2.new(0,0,1,-20)
@@ -773,10 +778,9 @@ local function CreateUI()
     stats.Parent = mainFrame
 
     spawn(function()
-        local kills = 0
         while true do
             task.wait(0.5)
-            kills = PlayerKills[LocalPlayer.Name] or 0
+            local kills = PlayerKills[LocalPlayer.Name] or 0
             stats.Text = "Ronda: " .. (CurrentRound or 0) .. "/5 | Bajas: " .. kills
         end
     end)
@@ -786,10 +790,7 @@ local function CreateUI()
     return mainFrame
 end
 
--- ===================== EVENTOS Y BUCLE =====================
-local CurrentRound = 0
-local PlayerKills = {}
-
+-- ===================== EVENTOS Y BUCLE PRINCIPAL =====================
 LocalPlayer.CharacterAdded:Connect(function(char)
     if CONFIG.Invisible then
         task.wait(0.2)
@@ -837,4 +838,4 @@ LocalPlayer.OnTeleport:Connect(ClearEsp)
 print("🔥 DUELOS HACK v3.2.6 CARGADO")
 print("👤 By Vaxxzu")
 print("🔑 Tecla Invisible: " .. CONFIG.InvisibleKey)
-print("💡 TODAS LAS OPCIONES ESCRIBEN MENSAJES EN CONSOLA")
+print("💡 TODAS LAS OPCIONES ESCRIBEN MENSAJES EN CONSOLA AL ACTIVARSE")
