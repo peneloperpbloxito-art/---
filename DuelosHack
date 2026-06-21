@@ -1,13 +1,13 @@
 -- ============================================================
 -- 🔥 DUELOS HACK v3.2.6 (MÓVIL / DELTA) 🔥
 -- CLON EXACTO DEL MENÚ "MURDERERS VS SHERIFFS"
--- Desarrollado por: Vaxxzu
--- CON BOTÓN DE CIERRE, ICONO FLOTANTE Y TEXTURAS LISAS
+-- AIMBOT MEJORADO CON VirtualInputManager
 -- ============================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local VirtualInput = game:GetService("VirtualInputManager")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
@@ -70,7 +70,7 @@ local function ToggleKnife(state)
     end
 end
 
--- ===================== AIMBOT =====================
+-- ===================== AIMBOT (CON VirtualInputManager) =====================
 local function GetClosestEnemy()
     local enemies = {}
     for _, player in ipairs(Players:GetPlayers()) do
@@ -99,41 +99,38 @@ local function GetClosestEnemy()
     return closest
 end
 
+-- Disparar usando VirtualInputManager (más compatible en móvil)
 local function FireWeapon()
-    if Mouse and Mouse.Button1Down and Mouse.Button1Up then
-        Mouse.Button1Down()
-        task.wait(0.05)
-        Mouse.Button1Up()
-    end
-    UserInputService:SetMouseButtonEnabled(Enum.UserInputType.MouseButton1, true)
-    task.wait(0.02)
-    UserInputService:SetMouseButtonEnabled(Enum.UserInputType.MouseButton1, false)
+    -- Presionar y soltar clic izquierdo
+    VirtualInput:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, 0, true, 1, 0)
+    task.wait(0.05)
+    VirtualInput:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, 0, false, 1, 0)
 end
 
+-- Mover el mouse usando VirtualInputManager (movimiento absoluto)
 local function MoveMouseTo(target, smooth)
     if not target then return end
     local head = target.Character:FindFirstChild("Head")
     if not head then return end
     local pos, _ = Camera:WorldToScreenPoint(head.Position)
     if not smooth then
-        if Mouse and Mouse.Move then Mouse.Move(pos.X, pos.Y)
-        elseif syn and syn.mouse and syn.mouse.Move then syn.mouse.Move(pos.X, pos.Y)
-        elseif mousemoveabs then mousemoveabs(pos.X, pos.Y)
-        else UserInputService:MoveMouse(pos.X, pos.Y) end
+        -- Movimiento instantáneo
+        VirtualInput:SendMouseMoveEvent(pos.X, pos.Y, 0)
     else
+        -- Movimiento suave (lerp)
         local cx, cy = Mouse.X, Mouse.Y
         for i = 1, 10 do
             local a = i / 10
             local tx = cx + (pos.X - cx) * a
             local ty = cy + (pos.Y - cy) * a
-            if Mouse and Mouse.Move then Mouse.Move(tx, ty)
-            elseif syn and syn.mouse and syn.mouse.Move then syn.mouse.Move(tx, ty)
-            elseif mousemoveabs then mousemoveabs(tx, ty)
-            else UserInputService:MoveMouse(tx, ty) end
+            VirtualInput:SendMouseMoveEvent(tx, ty, 0)
             task.wait(0.01)
         end
     end
-    if CONFIG.AimbotBannable then FireWeapon() end
+    -- Si estamos en modo bannable, disparamos automáticamente
+    if CONFIG.AimbotBannable then
+        FireWeapon()
+    end
 end
 
 -- ===================== ESP (BILLBOARD + SELECTIONBOX) =====================
@@ -157,7 +154,6 @@ local function UpdateEsp()
         local hum = char:FindFirstChild("Humanoid")
         if not hum or hum.Health <= 0 then continue end
 
-        -- Nombre (Billboard)
         local nameTag = char:FindFirstChild("NameTagHack")
         if not nameTag then
             local bill = Instance.new("BillboardGui")
@@ -179,7 +175,6 @@ local function UpdateEsp()
             table.insert(EspBoxes, bill)
         end
 
-        -- Boxes (SelectionBox)
         if CONFIG.Boxes then
             local head = char:FindFirstChild("Head")
             if head then
@@ -194,7 +189,6 @@ local function UpdateEsp()
             end
         end
 
-        -- Hitbox (más partes)
         if CONFIG.Hitbox then
             local parts = {char:FindFirstChild("UpperTorso"), char:FindFirstChild("LowerTorso"), char:FindFirstChild("LeftArm"), char:FindFirstChild("RightArm"), char:FindFirstChild("LeftLeg"), char:FindFirstChild("RightLeg")}
             for _, part in ipairs(parts) do
@@ -340,7 +334,7 @@ local function ApplySmoothTextures(state)
     print("🧊 Texturas Lisas: " .. (state and "ON" or "OFF"))
 end
 
--- ===================== CONSTRUCCIÓN DE LA GUI (CLON PERFECTO) =====================
+-- ===================== CONSTRUCCIÓN DE LA GUI (CON X GIGANTE) =====================
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "DuelosHackUI"
@@ -379,27 +373,27 @@ local function CreateUI()
 
     -- BARRA DE TÍTULO
     local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1,0,0,50)
+    titleBar.Size = UDim2.new(1,0,0,60)
     titleBar.Position = UDim2.new(0,0,0,0)
     titleBar.BackgroundColor3 = Color3.fromRGB(0,0,0)
-    titleBar.BackgroundTransparency = 0.3
+    titleBar.BackgroundTransparency = 0.2
     titleBar.BorderSizePixel = 0
     titleBar.Parent = mainFrame
 
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0.7,0,1,0)
+    title.Size = UDim2.new(0.6,0,1,0)
     title.Position = UDim2.new(0.05,0,0,0)
     title.Text = "DUELOS HACK"
     title.TextColor3 = Color3.fromRGB(255,255,255)
     title.BackgroundTransparency = 1
     title.Font = Enum.Font.GothamBold
-    title.TextSize = 20
+    title.TextSize = 22
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = titleBar
 
     local sub = Instance.new("TextLabel")
-    sub.Size = UDim2.new(0.4,0,1,0)
-    sub.Position = UDim2.new(0.6,0,0,0)
+    sub.Size = UDim2.new(0.3,0,1,0)
+    sub.Position = UDim2.new(0.65,0,0,0)
     sub.Text = "Vaxxzu"
     sub.TextColor3 = Color3.fromRGB(150,150,150)
     sub.BackgroundTransparency = 1
@@ -408,26 +402,29 @@ local function CreateUI()
     sub.TextXAlignment = Enum.TextXAlignment.Right
     sub.Parent = titleBar
 
-    -- BOTÓN CERRAR (✕)
+    -- BOTÓN CERRAR (X) GIGANTE
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0,35,0,35)
-    closeBtn.Position = UDim2.new(1,-40,0,8)
+    closeBtn.Size = UDim2.new(0, 50, 0, 50)
+    closeBtn.Position = UDim2.new(1, -55, 0, 5)
     closeBtn.Text = "✕"
-    closeBtn.TextColor3 = Color3.fromRGB(200,200,200)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
-    closeBtn.BackgroundTransparency = 0.5
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 26
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    closeBtn.BackgroundTransparency = 0
     closeBtn.BorderSizePixel = 0
-    closeBtn.Font = Enum.Font.Gotham
-    closeBtn.TextSize = 18
+    closeBtn.Font = Enum.Font.GothamBold
     closeBtn.Parent = titleBar
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 10)
+    closeCorner.Parent = closeBtn
     closeBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
     end)
 
     -- SCROLL
     local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1,-10,1,-60)
-    scroll.Position = UDim2.new(0,5,0,55)
+    scroll.Size = UDim2.new(1,-10,1,-70)
+    scroll.Position = UDim2.new(0,5,0,65)
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
     scroll.ScrollBarThickness = 4
@@ -507,7 +504,7 @@ local function CreateUI()
         return {Btn = btn, Indicator = indicator}
     end
 
-    -- ===== CONSTRUCCIÓN DE OPCIONES (ORDEN EXACTO DE LA FOTO) =====
+    -- ===== CONSTRUCCIÓN DE OPCIONES (ORDEN EXACTO) =====
     local y = 0
     createHeader("── SETTINGS ──", y); y = y + 27
     createHeader("── PLAYER CHEATS ──", y); y = y + 27
@@ -636,7 +633,7 @@ local function CreateUI()
         print("🦘 Potencia de Salto: " .. (CONFIG.JumpPower and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- Slider Potencia de Salto
+    -- Slider Potencia
     local jumpFrame = Instance.new("Frame")
     jumpFrame.Size = UDim2.new(1,-10,0,35)
     jumpFrame.Position = UDim2.new(0,5,0,y)
@@ -825,5 +822,6 @@ LocalPlayer.OnTeleport:Connect(ClearEsp)
 print("🔥 DUELOS HACK v3.2.6 (MÓVIL) CARGADO")
 print("👤 By Vaxxzu")
 print("🔑 Tecla Invisible: " .. CONFIG.InvisibleKey)
-print("🧊 Texturas Lisas añadida")
+print("❌ Botón de Cierre (X) ahora es GRANDE y VISIBLE")
+print("🎯 Aimbot actualizado con VirtualInputManager para móvil")
 print("💡 PRESIONA CUALQUIER BOTÓN PARA VER MENSAJES EN CONSOLA")
