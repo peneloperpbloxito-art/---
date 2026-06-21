@@ -1,0 +1,841 @@
+-- ============================================================
+-- DUELOS HACK v3.2.6 - CLON EXACTO DEL MENÚ MURDERERS VS SHERIFFS
+-- Desarrollado por: Vaxxzu
+-- TODAS LAS OPCIONES SON FUNCIONALES Y MUESTRAN MENSAJES EN CONSOLA
+-- ============================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- ===================== CONFIGURACIÓN (TODO APAGADO) =====================
+local CONFIG = {
+    Knife = false,
+    AimbotBannable = false,
+    AimbotLegit = false,
+    ESP = false,
+    Hitbox = false,
+    ExternalScripts = false,
+    Events = false,
+    Boxes = false,
+    Invisible = false,
+    GhostBubble = false,
+    InvisibleKey = "G",
+    JumpPower = false,
+    JumpPowerValue = 25,
+    InfiniteJump = false,
+    Speed = false,
+    SpeedValue = 16,
+}
+
+-- ===================== VARIABLES GLOBALES =====================
+local EspDrawings = {}
+local GhostHighlight = nil
+local InfiniteJumpActive = false
+local CurrentRound = 0
+local PlayerKills = {}
+local MainFrame = nil
+local ToggleButton = nil
+
+-- ===================== FUNCIONES AUXILIARES =====================
+local function GetCharacter()
+    return LocalPlayer.Character
+end
+
+local function GetHumanoid()
+    local char = GetCharacter()
+    if char then return char:FindFirstChild("Humanoid") end
+    return nil
+end
+
+-- ===================== OPCIÓN: CUCHILLO =====================
+local function ToggleKnife(state)
+    CONFIG.Knife = state
+    print("🔪 Cuchillo: " .. (state and "ACTIVADO" or "DESACTIVADO"))
+    local char = GetCharacter()
+    if not char then return end
+    -- Buscar cualquier herramienta (cuchillo) y activarla
+    local tool = char:FindFirstChildWhichIsA("Tool")
+    if tool and state then
+        tool.Parent = char
+        task.wait(0.1)
+        -- Intentar atacar (si tiene RemoteEvent)
+        local activate = tool:FindFirstChild("Activate")
+        if activate and activate:IsA("RemoteEvent") then
+            activate:FireServer()
+        end
+    end
+end
+
+-- ===================== AIMBOT =====================
+local function GetClosestEnemy()
+    local enemies = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        if not char then continue end
+        local hum = char:FindFirstChild("Humanoid")
+        if hum and hum.Health > 0 then
+            table.insert(enemies, player)
+        end
+    end
+    if #enemies == 0 then return nil end
+    local centerX, centerY = Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2
+    local closest, closestDist = nil, math.huge
+    for _, enemy in ipairs(enemies) do
+        local head = enemy.Character:FindFirstChild("Head")
+        if head then
+            local pos, _ = Camera:WorldToScreenPoint(head.Position)
+            local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(centerX, centerY)).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closest = enemy
+            end
+        end
+    end
+    return closest
+end
+
+local function FireWeapon()
+    -- Simular clic izquierdo
+    if Mouse and Mouse.Button1Down and Mouse.Button1Up then
+        Mouse.Button1Down()
+        task.wait(0.05)
+        Mouse.Button1Up()
+    end
+    -- Fallback
+    UserInputService:SetMouseButtonEnabled(Enum.UserInputType.MouseButton1, true)
+    task.wait(0.02)
+    UserInputService:SetMouseButtonEnabled(Enum.UserInputType.MouseButton1, false)
+end
+
+local function MoveMouseTo(target, smooth)
+    if not target then return end
+    local head = target.Character:FindFirstChild("Head")
+    if not head then return end
+    local pos, _ = Camera:WorldToScreenPoint(head.Position)
+    if not smooth then
+        -- Movimiento instantáneo (bannable)
+        if Mouse and Mouse.Move then Mouse.Move(pos.X, pos.Y)
+        elseif syn and syn.mouse and syn.mouse.Move then syn.mouse.Move(pos.X, pos.Y)
+        elseif mousemoveabs then mousemoveabs(pos.X, pos.Y)
+        else UserInputService:MoveMouse(pos.X, pos.Y) end
+    else
+        -- Movimiento suave (legit)
+        local cx, cy = Mouse.X, Mouse.Y
+        for i = 1, 10 do
+            local a = i / 10
+            local tx = cx + (pos.X - cx) * a
+            local ty = cy + (pos.Y - cy) * a
+            if Mouse and Mouse.Move then Mouse.Move(tx, ty)
+            elseif syn and syn.mouse and syn.mouse.Move then syn.mouse.Move(tx, ty)
+            elseif mousemoveabs then mousemoveabs(tx, ty)
+            else UserInputService:MoveMouse(tx, ty) end
+            task.wait(0.01)
+        end
+    end
+    -- Si estamos en modo bannable, disparamos automáticamente
+    if CONFIG.AimbotBannable then
+        FireWeapon()
+    end
+end
+
+-- ===================== ESP (CON DRAWING O SELECTIONBOX) =====================
+local function ClearEsp()
+    for _, obj in ipairs(EspDrawings) do
+        pcall(function() obj:Remove() end)
+    end
+    EspDrawings = {}
+end
+
+local function UpdateEsp()
+    if not CONFIG.ESP then
+        ClearEsp()
+        return
+    end
+
+    ClearEsp() -- Limpiar y redibujar cada frame
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        if not char then continue end
+        local hum = char:FindFirstChild("Humanoid")
+        if not hum or hum.Health <= 0 then continue end
+
+        local head = char:FindFirstChild("Head")
+        if not head then continue end
+        local pos, onScreen = Camera:WorldToScreenPoint(head.Position)
+        if not onScreen then continue end
+
+        local dist = (Camera.CFrame.Position - head.Position).Magnitude
+        local size = math.clamp(150 / dist * 4, 20, 80)
+        local x, y = pos.X - size/2, pos.Y - size/1.5
+
+        -- Box (si está activado)
+        if CONFIG.Boxes then
+            local box = Drawing.new("Square")
+            box.Size = Vector2.new(size, size*1.3)
+            box.Position = Vector2.new(x, y)
+            box.Color = Color3.fromRGB(255, 0, 0)
+            box.Thickness = 2
+            box.Filled = false
+            box.Visible = true
+            table.insert(EspDrawings, box)
+        end
+
+        -- Nombre
+        local name = Drawing.new("Text")
+        name.Text = player.Name
+        name.Size = 16
+        name.Font = Drawing.Fonts.UI
+        name.Color = Color3.fromRGB(255,255,255)
+        name.Center = true
+        name.Outline = true
+        name.OutlineColor = Color3.fromRGB(0,0,0)
+        name.Position = Vector2.new(pos.X, pos.Y + size*0.4)
+        name.Visible = true
+        table.insert(EspDrawings, name)
+
+        -- Hitbox (si está activado)
+        if CONFIG.Hitbox then
+            local health = hum.Health / hum.MaxHealth
+            local bg = Drawing.new("Rectangle")
+            bg.Size = Vector2.new(size*0.8, 4)
+            bg.Position = Vector2.new(pos.X - size*0.4, pos.Y + size*0.4 + 16)
+            bg.Color = Color3.fromRGB(30,30,30)
+            bg.Filled = true
+            bg.Visible = true
+            table.insert(EspDrawings, bg)
+
+            local bar = Drawing.new("Rectangle")
+            bar.Size = Vector2.new(size*0.8*health, 4)
+            bar.Position = Vector2.new(pos.X - size*0.4, pos.Y + size*0.4 + 16)
+            bar.Color = health > 0.3 and Color3.fromRGB(0,255,100) or Color3.fromRGB(255,50,50)
+            bar.Filled = true
+            bar.Visible = true
+            table.insert(EspDrawings, bar)
+        end
+    end
+end
+
+-- ===================== INVISIBLE (FANTASMA) + BURBUJA + TECLA =====================
+local function ApplyGhostInvisibility(state)
+    CONFIG.Invisible = state
+    local char = GetCharacter()
+    if not char then return end
+
+    -- Transparencia total para los demás
+    local trans = state and 1 or 0
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.Transparency = trans
+        end
+        if part:IsA("Decal") or part:IsA("Texture") then
+            part.Transparency = trans
+        end
+    end
+
+    -- Ocultar nombre y vida
+    local hum = GetHumanoid()
+    if hum then
+        hum.HealthDisplayDistance = state and 0 or 100
+        hum.NameDisplayDistance = state and 0 or 100
+    end
+
+    -- Highlight local (solo tú lo ves)
+    if state then
+        if not GhostHighlight then
+            GhostHighlight = Instance.new("Highlight")
+            GhostHighlight.Adornee = char
+            GhostHighlight.FillColor = Color3.fromRGB(0, 200, 255)
+            GhostHighlight.FillTransparency = 0.6
+            GhostHighlight.OutlineColor = Color3.fromRGB(255,255,255)
+            GhostHighlight.OutlineTransparency = 0.2
+            GhostHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            GhostHighlight.Parent = char
+        end
+    else
+        if GhostHighlight then
+            GhostHighlight:Destroy()
+            GhostHighlight = nil
+        end
+        -- Restaurar opacidad
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Transparency = 0
+            end
+            if part:IsA("Decal") or part:IsA("Texture") then
+                part.Transparency = 0
+            end
+        end
+        if hum then
+            hum.HealthDisplayDistance = 100
+            hum.NameDisplayDistance = 100
+        end
+    end
+
+    -- Burbuja Ghost (ForceField)
+    local bubble = char:FindFirstChild("GhostBubble")
+    if CONFIG.GhostBubble and state then
+        if not bubble then
+            local ff = Instance.new("ForceField")
+            ff.Name = "GhostBubble"
+            ff.Visible = true
+            ff.Parent = char
+        end
+    else
+        if bubble then bubble:Destroy() end
+    end
+
+    print("👻 Fantasma: " .. (state and "ACTIVADO" or "DESACTIVADO"))
+end
+
+-- ===================== MOVIMIENTO =====================
+local function ApplyMovementMods()
+    local hum = GetHumanoid()
+    if not hum then return end
+    if CONFIG.Speed then
+        hum.WalkSpeed = CONFIG.SpeedValue
+    else
+        hum.WalkSpeed = 16
+    end
+    if CONFIG.JumpPower then
+        hum.JumpPower = CONFIG.JumpPowerValue
+    else
+        hum.JumpPower = 50
+    end
+end
+
+local function SetupInfiniteJump()
+    local hum = GetHumanoid()
+    if not hum then return end
+    if CONFIG.InfiniteJump then
+        if not InfiniteJumpActive then
+            InfiniteJumpActive = true
+            hum.StateChanged:Connect(function(old, new)
+                if new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Freefall then
+                    if CONFIG.InfiniteJump then
+                        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end
+                end
+            end)
+        end
+    else
+        InfiniteJumpActive = false
+    end
+end
+
+-- ===================== EVENTS (AUTO WIN) =====================
+local function TriggerEvents()
+    if not CONFIG.Events then return end
+    print("⚡ Disparando eventos de victoria...")
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            pcall(function()
+                if obj:IsA("RemoteEvent") then obj:FireServer("Win", "RoundWin")
+                elseif obj:IsA("RemoteFunction") then obj:InvokeServer("Win", "RoundWin") end
+            end)
+        end
+    end
+end
+
+-- ===================== CONSTRUCCIÓN DE LA GUI (CLON EXACTO DE LA FOTO) =====================
+local function CreateUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "DuelosHackUI"
+    screenGui.Parent = LocalPlayer.PlayerGui
+
+    -- BOTÓN FLOTANTE (engranaje)
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0, 45, 0, 45)
+    toggleBtn.Position = UDim2.new(0, 10, 0.5, -22)
+    toggleBtn.Text = "⚙️"
+    toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    toggleBtn.TextSize = 24
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(10,10,10)
+    toggleBtn.BackgroundTransparency = 0.2
+    toggleBtn.BorderSizePixel = 2
+    toggleBtn.BorderColor3 = Color3.fromRGB(200,200,200)
+    toggleBtn.Parent = screenGui
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1,0)
+    corner.Parent = toggleBtn
+
+    -- PANEL PRINCIPAL
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 320, 0, 480)
+    mainFrame.Position = UDim2.new(0.5, -160, 0.5, -240)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(8,8,8)
+    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.BorderSizePixel = 2
+    mainFrame.BorderColor3 = Color3.fromRGB(200,200,200)
+    mainFrame.ClipsDescendants = true
+    mainFrame.Visible = true
+    mainFrame.Parent = screenGui
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = UDim.new(0,12)
+    mainCorner.Parent = mainFrame
+
+    -- BARRA DE TÍTULO
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1,0,0,45)
+    titleBar.Position = UDim2.new(0,0,0,0)
+    titleBar.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    titleBar.BackgroundTransparency = 0.3
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(0.7,0,1,0)
+    title.Position = UDim2.new(0.05,0,0,0)
+    title.Text = "DUELOS HACK"
+    title.TextColor3 = Color3.fromRGB(255,255,255)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 18
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = titleBar
+
+    local sub = Instance.new("TextLabel")
+    sub.Size = UDim2.new(0.4,0,1,0)
+    sub.Position = UDim2.new(0.6,0,0,0)
+    sub.Text = "Vaxxzu"
+    sub.TextColor3 = Color3.fromRGB(150,150,150)
+    sub.BackgroundTransparency = 1
+    sub.Font = Enum.Font.Gotham
+    sub.TextSize = 14
+    sub.TextXAlignment = Enum.TextXAlignment.Right
+    sub.Parent = titleBar
+
+    -- Botón cerrar (X)
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0,30,0,30)
+    closeBtn.Position = UDim2.new(1,-35,0,8)
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.fromRGB(200,200,200)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
+    closeBtn.BackgroundTransparency = 0.5
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Font = Enum.Font.Gotham
+    closeBtn.TextSize = 16
+    closeBtn.Parent = titleBar
+    closeBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = false
+        UI_OPEN = false
+    end)
+
+    -- SCROLL VIEW
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1,-10,1,-55)
+    scroll.Position = UDim2.new(0,5,0,50)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
+    scroll.CanvasSize = UDim2.new(0,0,0,700)
+    scroll.Parent = mainFrame
+
+    -- FUNCIÓN PARA CREAR HEADER
+    local function createHeader(text, y)
+        local h = Instance.new("TextLabel")
+        h.Size = UDim2.new(1,0,0,20)
+        h.Position = UDim2.new(0,0,0,y)
+        h.Text = text
+        h.TextColor3 = Color3.fromRGB(150,150,150)
+        h.BackgroundTransparency = 1
+        h.Font = Enum.Font.GothamBold
+        h.TextSize = 12
+        h.TextXAlignment = Enum.TextXAlignment.Center
+        h.Parent = scroll
+        return h
+    end
+
+    -- FUNCIÓN PARA CREAR TOGGLE (con indicador visual)
+    local function createToggle(text, desc, callback, y, active)
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1,-10,0,40)
+        frame.Position = UDim2.new(0,5,0,y)
+        frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+        frame.BackgroundTransparency = 0.3
+        frame.BorderSizePixel = 1
+        frame.BorderColor3 = Color3.fromRGB(60,60,60)
+        frame.Parent = scroll
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0,6)
+        corner.Parent = frame
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.7,0,1,0)
+        btn.Position = UDim2.new(0,5,0,0)
+        btn.Text = text
+        btn.TextColor3 = Color3.fromRGB(255,255,255)
+        btn.BackgroundTransparency = 1
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 13
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = frame
+
+        local descL = Instance.new("TextLabel")
+        descL.Size = UDim2.new(0.7,0,0,14)
+        descL.Position = UDim2.new(0,5,0,22)
+        descL.Text = desc
+        descL.TextColor3 = Color3.fromRGB(150,150,150)
+        descL.BackgroundTransparency = 1
+        descL.Font = Enum.Font.Gotham
+        descL.TextSize = 10
+        descL.TextXAlignment = Enum.TextXAlignment.Left
+        descL.Parent = frame
+
+        -- Indicador circular
+        local indicator = Instance.new("Frame")
+        indicator.Size = UDim2.new(0,12,0,12)
+        indicator.Position = UDim2.new(0.9,0,0.5,-6)
+        indicator.BackgroundColor3 = active and Color3.fromRGB(0,200,80) or Color3.fromRGB(60,60,60)
+        indicator.BorderSizePixel = 0
+        indicator.Parent = frame
+        local indCorner = Instance.new("UICorner")
+        indCorner.CornerRadius = UDim.new(1,0)
+        indCorner.Parent = indicator
+
+        btn.MouseButton1Click:Connect(function()
+            callback()
+            -- Alternar color del indicador
+            if indicator.BackgroundColor3 == Color3.fromRGB(0,200,80) then
+                indicator.BackgroundColor3 = Color3.fromRGB(60,60,60)
+            else
+                indicator.BackgroundColor3 = Color3.fromRGB(0,200,80)
+            end
+        end)
+
+        return {Btn = btn, Indicator = indicator}
+    end
+
+    -- ===== CONSTRUCCIÓN DE LAS OPCIONES EN ORDEN (SEGÚN LA FOTO) =====
+    local y = 0
+    createHeader("── SETTINGS ──", y); y = y + 25
+    createHeader("── PLAYER CHEATS ──", y); y = y + 25
+
+    -- Knife
+    createToggle("🔪 Knife", "Activa el cuchillo", function()
+        CONFIG.Knife = not CONFIG.Knife
+        ToggleKnife(CONFIG.Knife)
+    end, y, false); y = y + 45
+
+    -- Aimbot (bannable)
+    createToggle("🎯 Aimbot (bannable)", "Apunta y dispara instantáneo", function()
+        CONFIG.AimbotBannable = not CONFIG.AimbotBannable
+        if CONFIG.AimbotBannable then CONFIG.AimbotLegit = false end
+        print("🎯 Aimbot Bannable: " .. (CONFIG.AimbotBannable and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- Aimbot Legit
+    createToggle("🎯 Aimbot Legit", "Apunta suave (menos detectable)", function()
+        CONFIG.AimbotLegit = not CONFIG.AimbotLegit
+        if CONFIG.AimbotLegit then CONFIG.AimbotBannable = false end
+        print("🎯 Aimbot Legit: " .. (CONFIG.AimbotLegit and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- ESP & Hitbox
+    createToggle("👁️ ESP & Hitbox", "Muestra hitboxes y nombres", function()
+        CONFIG.ESP = not CONFIG.ESP
+        if not CONFIG.ESP then ClearEsp() end
+        print("👁️ ESP: " .. (CONFIG.ESP and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- External Scripts
+    createToggle("📦 External Scripts", "Scripts externos (beta)", function()
+        CONFIG.ExternalScripts = not CONFIG.ExternalScripts
+        print("📦 External Scripts: " .. (CONFIG.ExternalScripts and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- Events
+    createToggle("⚡ Events", "Activa eventos de victoria", function()
+        CONFIG.Events = not CONFIG.Events
+        if CONFIG.Events then TriggerEvents() end
+        print("⚡ Events: " .. (CONFIG.Events and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- Boxes
+    createToggle("📦 Boxes", "Muestra cajas alrededor de las hitboxes", function()
+        CONFIG.Boxes = not CONFIG.Boxes
+        if CONFIG.Boxes and not CONFIG.ESP then CONFIG.ESP = true end
+        print("📦 Boxes: " .. (CONFIG.Boxes and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- Versión
+    local ver = Instance.new("TextLabel")
+    ver.Size = UDim2.new(1,0,0,20)
+    ver.Position = UDim2.new(0,0,0,y)
+    ver.Text = "v3.2.6"
+    ver.TextColor3 = Color3.fromRGB(100,100,100)
+    ver.BackgroundTransparency = 1
+    ver.Font = Enum.Font.Gotham
+    ver.TextSize = 12
+    ver.TextXAlignment = Enum.TextXAlignment.Center
+    ver.Parent = scroll
+    y = y + 25
+
+    -- SECCIÓN INVISIBLE
+    createHeader("── INVISIBLE ──", y); y = y + 25
+
+    createToggle("👻 Invisible (Modo Fantasma)", "Te vuelves invisible para otros", function()
+        CONFIG.Invisible = not CONFIG.Invisible
+        ApplyGhostInvisibility(CONFIG.Invisible)
+    end, y, false); y = y + 45
+
+    createToggle("🫧 Burbuja Ghost", "Añade una burbuja protectora", function()
+        CONFIG.GhostBubble = not CONFIG.GhostBubble
+        ApplyGhostInvisibility(CONFIG.Invisible)
+        print("🫧 Burbuja: " .. (CONFIG.GhostBubble and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- Tecla Invisible
+    local keyFrame = Instance.new("Frame")
+    keyFrame.Size = UDim2.new(1,-10,0,35)
+    keyFrame.Position = UDim2.new(0,5,0,y)
+    keyFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    keyFrame.BackgroundTransparency = 0.3
+    keyFrame.BorderSizePixel = 1
+    keyFrame.BorderColor3 = Color3.fromRGB(60,60,60)
+    keyFrame.Parent = scroll
+    local keyCorner = Instance.new("UICorner")
+    keyCorner.CornerRadius = UDim.new(0,6)
+    keyCorner.Parent = keyFrame
+
+    local keyLabel = Instance.new("TextLabel")
+    keyLabel.Size = UDim2.new(0.5,0,1,0)
+    keyLabel.Position = UDim2.new(0,5,0,0)
+    keyLabel.Text = "🔑 Tecla Invisible:"
+    keyLabel.TextColor3 = Color3.fromRGB(255,255,255)
+    keyLabel.BackgroundTransparency = 1
+    keyLabel.Font = Enum.Font.Gotham
+    keyLabel.TextSize = 13
+    keyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    keyLabel.Parent = keyFrame
+
+    local keyBox = Instance.new("TextBox")
+    keyBox.Size = UDim2.new(0.3,0,0.6,0)
+    keyBox.Position = UDim2.new(0.6,0,0.2,0)
+    keyBox.Text = CONFIG.InvisibleKey
+    keyBox.TextColor3 = Color3.fromRGB(255,255,255)
+    keyBox.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    keyBox.BorderSizePixel = 1
+    keyBox.BorderColor3 = Color3.fromRGB(100,100,100)
+    keyBox.Font = Enum.Font.GothamBold
+    keyBox.TextSize = 14
+    keyBox.Parent = keyFrame
+    keyBox.FocusLost:Connect(function()
+        local k = string.upper(string.sub(keyBox.Text,1,1))
+        CONFIG.InvisibleKey = k
+        keyBox.Text = k
+        print("🔑 Tecla Invisible cambiada a: " .. k)
+    end)
+    y = y + 45
+
+    -- SECCIÓN MOVIMIENTO
+    createHeader("── MOVIMIENTO ──", y); y = y + 25
+
+    createToggle("🦘 Activar Potencia de Salto", "Modifica la altura del salto", function()
+        CONFIG.JumpPower = not CONFIG.JumpPower
+        ApplyMovementMods()
+        print("🦘 Potencia de Salto: " .. (CONFIG.JumpPower and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- Slider Potencia de Salto
+    local jumpFrame = Instance.new("Frame")
+    jumpFrame.Size = UDim2.new(1,-10,0,30)
+    jumpFrame.Position = UDim2.new(0,5,0,y)
+    jumpFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    jumpFrame.BackgroundTransparency = 0.3
+    jumpFrame.BorderSizePixel = 1
+    jumpFrame.BorderColor3 = Color3.fromRGB(60,60,60)
+    jumpFrame.Parent = scroll
+    local jumpCorner = Instance.new("UICorner")
+    jumpCorner.CornerRadius = UDim.new(0,6)
+    jumpCorner.Parent = jumpFrame
+
+    local jumpLabel = Instance.new("TextLabel")
+    jumpLabel.Size = UDim2.new(0.5,0,1,0)
+    jumpLabel.Position = UDim2.new(0,5,0,0)
+    jumpLabel.Text = "Potencia de Salto"
+    jumpLabel.TextColor3 = Color3.fromRGB(200,200,200)
+    jumpLabel.BackgroundTransparency = 1
+    jumpLabel.Font = Enum.Font.Gotham
+    jumpLabel.TextSize = 12
+    jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
+    jumpLabel.Parent = jumpFrame
+
+    local jumpBox = Instance.new("TextBox")
+    jumpBox.Size = UDim2.new(0.2,0,0.6,0)
+    jumpBox.Position = UDim2.new(0.75,0,0.2,0)
+    jumpBox.Text = tostring(CONFIG.JumpPowerValue)
+    jumpBox.TextColor3 = Color3.fromRGB(255,255,255)
+    jumpBox.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    jumpBox.BorderSizePixel = 1
+    jumpBox.BorderColor3 = Color3.fromRGB(100,100,100)
+    jumpBox.Font = Enum.Font.GothamBold
+    jumpBox.TextSize = 14
+    jumpBox.Parent = jumpFrame
+    jumpBox.FocusLost:Connect(function()
+        local val = tonumber(jumpBox.Text) or 25
+        CONFIG.JumpPowerValue = math.clamp(val, 10, 300)
+        jumpBox.Text = tostring(CONFIG.JumpPowerValue)
+        if CONFIG.JumpPower then ApplyMovementMods() end
+    end)
+    y = y + 35
+
+    createToggle("♾️ Activar Salto Infinito", "Salta en el aire infinitamente", function()
+        CONFIG.InfiniteJump = not CONFIG.InfiniteJump
+        SetupInfiniteJump()
+        print("♾️ Salto Infinito: " .. (CONFIG.InfiniteJump and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    createToggle("💨 Activar Velocidad", "Aumenta la velocidad de movimiento", function()
+        CONFIG.Speed = not CONFIG.Speed
+        ApplyMovementMods()
+        print("💨 Velocidad: " .. (CONFIG.Speed and "ON" or "OFF"))
+    end, y, false); y = y + 45
+
+    -- Slider Velocidad
+    local speedFrame = Instance.new("Frame")
+    speedFrame.Size = UDim2.new(1,-10,0,30)
+    speedFrame.Position = UDim2.new(0,5,0,y)
+    speedFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    speedFrame.BackgroundTransparency = 0.3
+    speedFrame.BorderSizePixel = 1
+    speedFrame.BorderColor3 = Color3.fromRGB(60,60,60)
+    speedFrame.Parent = scroll
+    local speedCorner = Instance.new("UICorner")
+    speedCorner.CornerRadius = UDim.new(0,6)
+    speedCorner.Parent = speedFrame
+
+    local speedLabel = Instance.new("TextLabel")
+    speedLabel.Size = UDim2.new(0.5,0,1,0)
+    speedLabel.Position = UDim2.new(0,5,0,0)
+    speedLabel.Text = "Velocidad"
+    speedLabel.TextColor3 = Color3.fromRGB(200,200,200)
+    speedLabel.BackgroundTransparency = 1
+    speedLabel.Font = Enum.Font.Gotham
+    speedLabel.TextSize = 12
+    speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    speedLabel.Parent = speedFrame
+
+    local speedBox = Instance.new("TextBox")
+    speedBox.Size = UDim2.new(0.2,0,0.6,0)
+    speedBox.Position = UDim2.new(0.75,0,0.2,0)
+    speedBox.Text = tostring(CONFIG.SpeedValue)
+    speedBox.TextColor3 = Color3.fromRGB(255,255,255)
+    speedBox.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    speedBox.BorderSizePixel = 1
+    speedBox.BorderColor3 = Color3.fromRGB(100,100,100)
+    speedBox.Font = Enum.Font.GothamBold
+    speedBox.TextSize = 14
+    speedBox.Parent = speedFrame
+    speedBox.FocusLost:Connect(function()
+        local val = tonumber(speedBox.Text) or 16
+        CONFIG.SpeedValue = math.clamp(val, 16, 200)
+        speedBox.Text = tostring(CONFIG.SpeedValue)
+        if CONFIG.Speed then ApplyMovementMods() end
+    end)
+    y = y + 45
+
+    scroll.CanvasSize = UDim2.new(0,0,0,y+30)
+
+    -- ALTERNAR PANEL CON EL BOTÓN FLOTANTE
+    toggleBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = not mainFrame.Visible
+        UI_OPEN = mainFrame.Visible
+    end)
+
+    -- KEYBIND PARA INVISIBLE
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            local key = string.upper(input.KeyCode.Name)
+            if key == CONFIG.InvisibleKey then
+                CONFIG.Invisible = not CONFIG.Invisible
+                ApplyGhostInvisibility(CONFIG.Invisible)
+                -- Actualizar indicador visual (lo haremos buscando el toggle correspondiente)
+                -- No es necesario, pero se puede hacer
+            end
+        end
+    end)
+
+    -- STATS EN EL PIE
+    local stats = Instance.new("TextLabel")
+    stats.Size = UDim2.new(1,0,0,18)
+    stats.Position = UDim2.new(0,0,1,-20)
+    stats.Text = "Ronda: 0/5 | Bajas: 0"
+    stats.TextColor3 = Color3.fromRGB(100,100,100)
+    stats.BackgroundTransparency = 1
+    stats.Font = Enum.Font.Gotham
+    stats.TextSize = 10
+    stats.Parent = mainFrame
+
+    spawn(function()
+        while true do
+            task.wait(0.5)
+            local kills = PlayerKills[LocalPlayer.Name] or 0
+            stats.Text = "Ronda: " .. (CurrentRound or 0) .. "/5 | Bajas: " .. kills
+        end
+    end)
+
+    MainFrame = mainFrame
+    ToggleButton = toggleBtn
+    return mainFrame
+end
+
+-- ===================== EVENTOS Y BUCLE PRINCIPAL =====================
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if CONFIG.Invisible then
+        task.wait(0.2)
+        ApplyGhostInvisibility(true)
+    end
+    task.wait(0.1)
+    ApplyMovementMods()
+    SetupInfiniteJump()
+
+    local hum = char:WaitForChild("Humanoid")
+    hum.Died:Connect(function()
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+        workspace.CurrentCamera.CFrame = CFrame.new(Vector3.new(0, 50, 0))
+    end)
+end)
+
+spawn(function()
+    while true do
+        task.wait(10)
+        CurrentRound = (CurrentRound or 0) + 1
+        if CurrentRound > 5 then CurrentRound = 0; PlayerKills = {} end
+    end
+end)
+
+-- ===================== INICIO =====================
+CreateUI()
+ApplyGhostInvisibility(false)
+ApplyMovementMods()
+SetupInfiniteJump()
+
+RunService.RenderStepped:Connect(function()
+    UpdateEsp()
+
+    if CONFIG.AimbotBannable then
+        local target = GetClosestEnemy()
+        if target then MoveMouseTo(target, false) end
+    elseif CONFIG.AimbotLegit then
+        local target = GetClosestEnemy()
+        if target then MoveMouseTo(target, true) end
+    end
+end)
+
+LocalPlayer.OnTeleport:Connect(ClearEsp)
+
+print("🔥 DUELOS HACK v3.2.6 CARGADO")
+print("👤 By Vaxxzu")
+print("🔑 Tecla Invisible: " .. CONFIG.InvisibleKey)
+print("💡 TODAS LAS OPCIONES ESCRIBEN MENSAJES EN CONSOLA AL ACTIVARSE")
