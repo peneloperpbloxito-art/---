@@ -1,43 +1,45 @@
 -- ============================================================
--- 🔥 DUELOS HACK v1.0 BETA 🔥
+-- 🔥 DUELOS HACK v4.0 BETA 🔥
 -- Desarrollado por: Vaxxzu
--- ESP con SelectionBox (estable), UI Negra, Icono flotante.
+-- GUI Horizontal con animación, ESP por SelectionBox,
+-- Fantasma (Highlight local), todo desactivado por defecto.
 -- ============================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
--- ===================== CONFIGURACIÓN =====================
+-- ===================== CONFIGURACIÓN (TODO APAGADO) =====================
 local CONFIG = {
-    Wallhack = true,
-    Aimbot = true,
-    Wallbang = true,
-    Invisible = true,
+    Wallhack = false,     -- APAGADO por defecto
+    Aimbot = false,       -- APAGADO por defecto
+    Wallbang = false,     -- APAGADO por defecto
+    Invisible = false,    -- APAGADO por defecto
     AutoWinActive = false,
     AimbotAccuracy = 0.8,
 }
 
 -- ===================== VARIABLES GLOBALES =====================
-local EspBoxes = {}          -- {Player -> {Part -> SelectionBox}}
+local EspBoxes = {}
 local PlayerKills = {}
-local IsSpectator = false
 local CurrentRound = 0
 local UI_OPEN = true
+local GhostHighlight = nil  -- Para el efecto fantasma local
 local MainFrame = nil
+local ToggleButton = nil
 
--- ===================== INVISIBILIDAD FANTASMA =====================
+-- ===================== FUNCIÓN: FANTASMA (INVISIBLE PARA OTROS, SEMI PARA TI) =====================
 local function ApplyGhostInvisibility(state)
     local character = LocalPlayer.Character
     if not character then return end
 
+    -- 1. Hacer todas las partes transparentes para TODOS (así los demás no te ven)
     local transparency = state and 1 or 0
-    local localModifier = state and 0.5 or 0
-
     for _, part in ipairs(character:GetDescendants()) do
         if part:IsA("BasePart") then
             part.Transparency = transparency
@@ -47,18 +49,42 @@ local function ApplyGhostInvisibility(state)
         end
     end
 
+    -- 2. Ocultar nombre y vida para los demás
     local humanoid = character:FindFirstChild("Humanoid")
     if humanoid then
         humanoid.HealthDisplayDistance = state and 0 or 100
         humanoid.NameDisplayDistance = state and 0 or 100
-        humanoid:SetAttribute("LocalTransparencyModifier", localModifier)
     end
 
-    for _, child in ipairs(character:GetChildren()) do
-        if child:IsA("Accessory") or child:IsA("Tool") then
-            if child:FindFirstChild("Handle") then
-                child.Handle.Transparency = transparency
+    -- 3. Crear/Eliminar Highlight LOCAL (solo tú lo ves)
+    if state then
+        if not GhostHighlight then
+            GhostHighlight = Instance.new("Highlight")
+            GhostHighlight.Adornee = character
+            GhostHighlight.FillColor = Color3.fromRGB(0, 200, 255)  -- Azul neón
+            GhostHighlight.FillTransparency = 0.6  -- Semi-transparente
+            GhostHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            GhostHighlight.OutlineTransparency = 0.2
+            GhostHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            GhostHighlight.Parent = character
+        end
+    else
+        if GhostHighlight then
+            GhostHighlight:Destroy()
+            GhostHighlight = nil
+        end
+        -- Restaurar transparencia a 0
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Transparency = 0
             end
+            if part:IsA("Decal") or part:IsA("Texture") then
+                part.Transparency = 0
+            end
+        end
+        if humanoid then
+            humanoid.HealthDisplayDistance = 100
+            humanoid.NameDisplayDistance = 100
         end
     end
 end
@@ -74,7 +100,12 @@ local function ClearEsp()
 end
 
 local function UpdateEsp()
-    -- Limpiar boxes de jugadores que ya no existen o están muertos
+    if not CONFIG.Wallhack then
+        ClearEsp()
+        return
+    end
+
+    -- Limpiar muertos
     for player, parts in pairs(EspBoxes) do
         if not player or not player.Parent or not player.Character or not player.Character:FindFirstChild("Humanoid") or player.Character.Humanoid.Health <= 0 then
             for part, box in pairs(parts) do
@@ -84,11 +115,6 @@ local function UpdateEsp()
         end
     end
 
-    if not CONFIG.Wallhack then
-        ClearEsp()
-        return
-    end
-
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
         local character = player.Character
@@ -96,7 +122,9 @@ local function UpdateEsp()
         local humanoid = character:FindFirstChild("Humanoid")
         if not humanoid or humanoid.Health <= 0 then continue end
 
-        -- Obtener partes del cuerpo
+        if not EspBoxes[player] then EspBoxes[player] = {} end
+
+        -- Partes a marcar
         local parts = {
             character:FindFirstChild("Head"),
             character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"),
@@ -107,12 +135,8 @@ local function UpdateEsp()
             character:FindFirstChild("RightLeg"),
         }
 
-        -- Inicializar tabla para este jugador si no existe
-        if not EspBoxes[player] then EspBoxes[player] = {} end
-
         for _, part in ipairs(parts) do
             if not part then continue end
-            -- Si ya existe un box para esta parte, actualizar su color/visibilidad
             if EspBoxes[player][part] then
                 local box = EspBoxes[player][part]
                 box.Visible = true
@@ -120,9 +144,7 @@ local function UpdateEsp()
                              (part.Name:find("Torso") and Color3.fromRGB(0, 200, 255)) or
                              (part.Name:find("Arm") and Color3.fromRGB(255, 200, 50)) or
                              Color3.fromRGB(50, 255, 100)
-                box.Transparency = 0.5
             else
-                -- Crear nuevo SelectionBox
                 local box = Instance.new("SelectionBox")
                 box.Adornee = part
                 box.Color3 = part.Name == "Head" and Color3.fromRGB(255, 50, 50) or
@@ -137,34 +159,53 @@ local function UpdateEsp()
             end
         end
 
-        -- Añadir nombre y vida (opcional: con BillboardGui)
-        -- Lo haremos simple con un TextLabel en el workspace (más estable)
-        local nameTag = character:FindFirstChild("NameTag")
+        -- Nombre y vida (Billboard)
+        local nameTag = character:FindFirstChild("NameTagHack")
         if not nameTag and CONFIG.Wallhack then
-            local billboard = Instance.new("BillboardGui")
-            billboard.Name = "NameTag"
-            billboard.Size = UDim2.new(0, 100, 0, 30)
-            billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-            billboard.AlwaysOnTop = true
-            billboard.Parent = character
+            local bill = Instance.new("BillboardGui")
+            bill.Name = "NameTagHack"
+            bill.Size = UDim2.new(0, 120, 0, 40)
+            bill.StudsOffset = Vector3.new(0, 3, 0)
+            bill.AlwaysOnTop = true
+            bill.Parent = character
 
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(1, 0, 1, 0)
-            label.BackgroundTransparency = 1
-            label.Text = player.Name
-            label.TextColor3 = Color3.fromRGB(255, 255, 255)
-            label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-            label.TextStrokeTransparency = 0.2
-            label.Font = Enum.Font.GothamBold
-            label.TextSize = 16
-            label.Parent = billboard
+            local nameLbl = Instance.new("TextLabel")
+            nameLbl.Size = UDim2.new(1, 0, 0.5, 0)
+            nameLbl.BackgroundTransparency = 1
+            nameLbl.Text = player.Name
+            nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            nameLbl.TextStrokeTransparency = 0.3
+            nameLbl.Font = Enum.Font.GothamBold
+            nameLbl.TextSize = 16
+            nameLbl.Parent = bill
+
+            local healthLbl = Instance.new("TextLabel")
+            healthLbl.Size = UDim2.new(1, 0, 0.5, 0)
+            healthLbl.Position = UDim2.new(0, 0, 0.5, 0)
+            healthLbl.BackgroundTransparency = 1
+            healthLbl.Text = "❤️ " .. math.floor(humanoid.Health)
+            healthLbl.TextColor3 = Color3.fromRGB(0, 255, 100)
+            healthLbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            healthLbl.TextStrokeTransparency = 0.3
+            healthLbl.Font = Enum.Font.Gotham
+            healthLbl.TextSize = 14
+            healthLbl.Parent = bill
         elseif nameTag then
             nameTag.Enabled = CONFIG.Wallhack
+            local healthLbl = nameTag:FindFirstChildWhichIsA("TextLabel")
+            if healthLbl and healthLbl.Parent == nameTag then
+                -- Actualizar vida
+                local hpLbl = nameTag:FindFirstChildWhichIsA("TextLabel")
+                if hpLbl and hpLbl.Parent == nameTag and hpLbl.Name ~= "Name" then
+                    hpLbl.Text = "❤️ " .. math.floor(humanoid.Health)
+                end
+            end
         end
     end
 end
 
--- ===================== AIMBOT CON WALLBANG =====================
+-- ===================== AIMBOT + WALLBANG =====================
 local function GetClosestEnemy()
     local enemies = {}
     for _, player in ipairs(Players:GetPlayers()) do
@@ -217,19 +258,12 @@ local function MoveMouseTo(target)
     local targetX = pos.X + noiseX
     local targetY = pos.Y + noiseY
 
-    if Mouse and Mouse.Move then
-        Mouse.Move(targetX, targetY)
-    elseif syn and syn.mouse and syn.mouse.Move then
-        syn.mouse.Move(targetX, targetY)
-    elseif mousemoveabs then
-        mousemoveabs(targetX, targetY)
-    else
-        UserInputService:MoveMouse(targetX, targetY)
-    end
+    if Mouse and Mouse.Move then Mouse.Move(targetX, targetY)
+    elseif syn and syn.mouse and syn.mouse.Move then syn.mouse.Move(targetX, targetY)
+    elseif mousemoveabs then mousemoveabs(targetX, targetY)
+    else UserInputService:MoveMouse(targetX, targetY) end
 
-    if CONFIG.Wallbang then
-        FireWeapon()
-    end
+    if CONFIG.Wallbang then FireWeapon() end
 end
 
 -- ===================== AUTO WIN =====================
@@ -238,7 +272,6 @@ local function AutoWin()
     CONFIG.AutoWinActive = true
     print("⚡ AUTO WIN: Eliminando enemigos...")
 
-    -- Intentar RemoteEvent
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
         if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
             pcall(function()
@@ -248,7 +281,6 @@ local function AutoWin()
         end
     end
 
-    -- Matar manualmente
     local enemies = {}
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
@@ -257,7 +289,7 @@ local function AutoWin()
     end
 
     if #enemies == 0 then
-        print("✅ AutoWin: No hay enemigos vivos. ¡Victoria!")
+        print("✅ AutoWin: No hay enemigos. ¡Victoria!")
         CONFIG.AutoWinActive = false
         return
     end
@@ -282,148 +314,120 @@ local function AutoWin()
             remaining = remaining + 1
         end
     end
-    if remaining > 0 then
-        CONFIG.AutoWinActive = false
-        AutoWin()
-    else
-        print("✅ AutoWin completado. ¡Victoria!")
-        CONFIG.AutoWinActive = false
-    end
+    if remaining > 0 then CONFIG.AutoWinActive = false; AutoWin()
+    else print("✅ AutoWin completado."); CONFIG.AutoWinActive = false end
 end
 
--- ===================== UI NEGRA CON ICONO FLOTANTE =====================
+-- ===================== UI HORIZONTAL CON ANIMACIÓN =====================
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "DuelosHackUI"
     screenGui.Parent = LocalPlayer.PlayerGui
 
-    -- Icono flotante (siempre visible, abre/cierra el menú)
-    local toggleBtn = Instance.new("ImageButton")
+    -- ===== BOTÓN FLOTANTE (ENGANCHE) =====
+    local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 50, 0, 50)
-    toggleBtn.Position = UDim2.new(0, 10, 0.5, -25)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    toggleBtn.Position = UDim2.new(0, 15, 0.5, -25)
+    toggleBtn.Text = "⚙️"
+    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleBtn.TextSize = 28
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     toggleBtn.BackgroundTransparency = 0.2
     toggleBtn.BorderSizePixel = 2
     toggleBtn.BorderColor3 = Color3.fromRGB(200, 200, 200)
-    toggleBtn.Image = "rbxassetid://1297195572" -- Icono de ajustes (engranaje)
-    toggleBtn.ImageColor3 = Color3.fromRGB(255, 255, 255)
     toggleBtn.Parent = screenGui
-
     local toggleCorner = Instance.new("UICorner")
     toggleCorner.CornerRadius = UDim.new(1, 0)
     toggleCorner.Parent = toggleBtn
 
-    -- Menú principal (negro con bordes blancos)
+    -- ===== PANEL PRINCIPAL (HORIZONTAL) =====
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 320, 0, 420)
-    mainFrame.Position = UDim2.new(0.5, -160, 0.5, -210)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.Size = UDim2.new(0, 480, 0, 90)
+    mainFrame.Position = UDim2.new(0.5, -240, 0.5, -45) -- Centrado
+    mainFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    mainFrame.BackgroundTransparency = 0.15
     mainFrame.BorderSizePixel = 2
     mainFrame.BorderColor3 = Color3.fromRGB(200, 200, 200)
     mainFrame.ClipsDescendants = true
     mainFrame.Visible = true
     mainFrame.Parent = screenGui
-
     local mainCorner = Instance.new("UICorner")
     mainCorner.CornerRadius = UDim.new(0, 12)
     mainCorner.Parent = mainFrame
 
-    -- Barra de título negra
-    local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    titleBar.BackgroundTransparency = 0.3
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = mainFrame
+    -- Título en la barra superior (izquierda)
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(0, 180, 1, 0)
+    titleLabel.Position = UDim2.new(0, 10, 0, 0)
+    titleLabel.Text = "⚡ DUELOS v4.0"
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextSize = 18
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = mainFrame
 
-    local titleText = Instance.new("TextLabel")
-    titleText.Size = UDim2.new(0.8, 0, 1, 0)
-    titleText.Position = UDim2.new(0.05, 0, 0, 0)
-    titleText.Text = "⚡ DUELOS HACK v3.0"
-    titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    titleText.BackgroundTransparency = 1
-    titleText.Font = Enum.Font.GothamBold
-    titleText.TextSize = 18
-    titleText.TextXAlignment = Enum.TextXAlignment.Left
-    titleText.Parent = titleBar
-
-    -- Botón cerrar (X) dentro del menú
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 30, 0, 30)
-    closeBtn.Position = UDim2.new(1, -35, 0, 5)
-    closeBtn.Text = "✕"
-    closeBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    closeBtn.BackgroundTransparency = 0.5
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Font = Enum.Font.Gotham
-    closeBtn.TextSize = 16
-    closeBtn.Parent = titleBar
-    closeBtn.MouseButton1Click:Connect(function()
-        mainFrame.Visible = not mainFrame.Visible
-        UI_OPEN = mainFrame.Visible
+    -- Botón para cerrar (dentro del panel)
+    local closePanelBtn = Instance.new("TextButton")
+    closePanelBtn.Size = UDim2.new(0, 30, 0, 30)
+    closePanelBtn.Position = UDim2.new(1, -40, 0, 8)
+    closePanelBtn.Text = "✕"
+    closePanelBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    closePanelBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    closePanelBtn.BackgroundTransparency = 0.5
+    closePanelBtn.BorderSizePixel = 0
+    closePanelBtn.Font = Enum.Font.Gotham
+    closePanelBtn.TextSize = 16
+    closePanelBtn.Parent = mainFrame
+    closePanelBtn.MouseButton1Click:Connect(function()
+        togglePanel(false)
     end)
 
-    -- Alternar menú con el icono flotante
-    toggleBtn.MouseButton1Click:Connect(function()
-        mainFrame.Visible = not mainFrame.Visible
-        UI_OPEN = mainFrame.Visible
-    end)
+    -- Contenedor de botones (horizontal)
+    local btnContainer = Instance.new("Frame")
+    btnContainer.Size = UDim2.new(1, -10, 1, -35)
+    btnContainer.Position = UDim2.new(0, 5, 0, 35)
+    btnContainer.BackgroundTransparency = 1
+    btnContainer.Parent = mainFrame
 
-    -- ScrollView para opciones
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1, -20, 1, -60)
-    scroll.Position = UDim2.new(0, 10, 0, 50)
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel = 0
-    scroll.ScrollBarThickness = 4
-    scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 450)
-    scroll.Parent = mainFrame
-
-    -- Función para crear botones en el menú negro
-    local function createBlackButton(text, desc, callback, yPos, active)
+    -- Función para crear botones pequeños horizontales
+    local function createHoriBtn(text, desc, callback, xPos, active)
         local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1, -10, 0, 50)
-        frame.Position = UDim2.new(0, 5, 0, yPos)
-        frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        frame.Size = UDim2.new(0, 85, 1, -5)
+        frame.Position = UDim2.new(0, xPos, 0, 2)
+        frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         frame.BackgroundTransparency = 0.3
         frame.BorderSizePixel = 1
         frame.BorderColor3 = Color3.fromRGB(60, 60, 60)
-        frame.Parent = scroll
-
+        frame.Parent = btnContainer
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
+        corner.CornerRadius = UDim.new(0, 6)
         corner.Parent = frame
 
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 1, 0)
+        btn.Size = UDim2.new(1, 0, 0.6, 0)
         btn.Position = UDim2.new(0, 0, 0, 0)
         btn.Text = text
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         btn.BackgroundTransparency = 1
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 14
-        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.TextSize = 13
         btn.Parent = frame
 
         local descLabel = Instance.new("TextLabel")
-        descLabel.Size = UDim2.new(0.8, 0, 0, 16)
-        descLabel.Position = UDim2.new(0.05, 0, 0.6, 0)
+        descLabel.Size = UDim2.new(1, 0, 0.4, 0)
+        descLabel.Position = UDim2.new(0, 0, 0.6, 0)
         descLabel.Text = desc
         descLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
         descLabel.BackgroundTransparency = 1
         descLabel.Font = Enum.Font.Gotham
-        descLabel.TextSize = 11
-        descLabel.TextXAlignment = Enum.TextXAlignment.Left
+        descLabel.TextSize = 9
         descLabel.Parent = frame
 
-        -- Indicador de estado (círculo)
+        -- Indicador (círculo)
         local indicator = Instance.new("Frame")
-        indicator.Size = UDim2.new(0, 12, 0, 12)
-        indicator.Position = UDim2.new(1, -20, 0.5, -6)
+        indicator.Size = UDim2.new(0, 8, 0, 8)
+        indicator.Position = UDim2.new(0.8, 0, 0.1, 0)
         indicator.BackgroundColor3 = active and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(60, 60, 60)
         indicator.BorderSizePixel = 0
         indicator.Parent = frame
@@ -433,136 +437,128 @@ local function CreateUI()
 
         btn.MouseButton1Click:Connect(function()
             callback()
-            indicator.BackgroundColor3 = indicator.BackgroundColor3 == Color3.fromRGB(0, 200, 80) and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(0, 200, 80)
+            if indicator.BackgroundColor3 == Color3.fromRGB(0, 200, 80) then
+                indicator.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            else
+                indicator.BackgroundColor3 = Color3.fromRGB(0, 200, 80)
+            end
         end)
 
         return {Btn = btn, Indicator = indicator}
     end
 
-    -- Secciones visuales
-    local header1 = Instance.new("TextLabel")
-    header1.Size = UDim2.new(1, 0, 0, 20)
-    header1.Position = UDim2.new(0, 0, 0, 0)
-    header1.Text = "── VISUAL ──"
-    header1.TextColor3 = Color3.fromRGB(150, 150, 150)
-    header1.BackgroundTransparency = 1
-    header1.Font = Enum.Font.Gotham
-    header1.TextSize = 12
-    header1.TextXAlignment = Enum.TextXAlignment.Center
-    header1.Parent = scroll
-
-    local wh = createBlackButton("🔲 Hitbox ESP", "Muestra hitboxes en 3D", function()
+    -- Crear botones (TODOS DESACTIVADOS POR DEFECTO -> active = false)
+    local b1 = createHoriBtn("🔲 ESP", "Hitbox", function()
         CONFIG.Wallhack = not CONFIG.Wallhack
         if not CONFIG.Wallhack then ClearEsp() end
-    end, 25, CONFIG.Wallhack)
+    end, 5, false)
 
-    local header2 = Instance.new("TextLabel")
-    header2.Size = UDim2.new(1, 0, 0, 20)
-    header2.Position = UDim2.new(0, 0, 0, 80)
-    header2.Text = "── COMBATE ──"
-    header2.TextColor3 = Color3.fromRGB(150, 150, 150)
-    header2.BackgroundTransparency = 1
-    header2.Font = Enum.Font.Gotham
-    header2.TextSize = 12
-    header2.TextXAlignment = Enum.TextXAlignment.Center
-    header2.Parent = scroll
-
-    local aim = createBlackButton("🎯 Aimbot 80%", "Apunta automáticamente", function()
+    local b2 = createHoriBtn("🎯 Aim", "80%", function()
         CONFIG.Aimbot = not CONFIG.Aimbot
-    end, 105, CONFIG.Aimbot)
+    end, 95, false)
 
-    local wb = createBlackButton("🧱 Wallbang", "Dispara a través de paredes", function()
+    local b3 = createHoriBtn("🧱 Wall", "AutoFire", function()
         CONFIG.Wallbang = not CONFIG.Wallbang
-    end, 160, CONFIG.Wallbang)
+    end, 185, false)
 
-    local header3 = Instance.new("TextLabel")
-    header3.Size = UDim2.new(1, 0, 0, 20)
-    header3.Position = UDim2.new(0, 0, 0, 215)
-    header3.Text = "── ESPECIALES ──"
-    header3.TextColor3 = Color3.fromRGB(150, 150, 150)
-    header3.BackgroundTransparency = 1
-    header3.Font = Enum.Font.Gotham
-    header3.TextSize = 12
-    header3.TextXAlignment = Enum.TextXAlignment.Center
-    header3.Parent = scroll
-
-    local inv = createBlackButton("👻 Fantasma", "Invisible para otros, semi para ti", function()
+    local b4 = createHoriBtn("👻 Ghost", "Fantasma", function()
         CONFIG.Invisible = not CONFIG.Invisible
         ApplyGhostInvisibility(CONFIG.Invisible)
-    end, 240, CONFIG.Invisible)
+    end, 275, false)
 
-    -- AutoWin (botón dorado especial)
+    -- Botón AutoWin (especial, dorado)
     local autoFrame = Instance.new("Frame")
-    autoFrame.Size = UDim2.new(1, -10, 0, 50)
-    autoFrame.Position = UDim2.new(0, 5, 0, 300)
+    autoFrame.Size = UDim2.new(0, 95, 1, -5)
+    autoFrame.Position = UDim2.new(0, 370, 0, 2)
     autoFrame.BackgroundColor3 = Color3.fromRGB(50, 40, 0)
     autoFrame.BackgroundTransparency = 0.3
     autoFrame.BorderSizePixel = 1
     autoFrame.BorderColor3 = Color3.fromRGB(200, 180, 0)
-    autoFrame.Parent = scroll
-
+    autoFrame.Parent = btnContainer
     local autoCorner = Instance.new("UICorner")
-    autoCorner.CornerRadius = UDim.new(0, 8)
+    autoCorner.CornerRadius = UDim.new(0, 6)
     autoCorner.Parent = autoFrame
 
     local autoBtn = Instance.new("TextButton")
-    autoBtn.Size = UDim2.new(1, 0, 1, 0)
+    autoBtn.Size = UDim2.new(1, 0, 0.6, 0)
     autoBtn.Position = UDim2.new(0, 0, 0, 0)
-    autoBtn.Text = "⚡ AUTO WIN (¡Gana al instante!)"
+    autoBtn.Text = "⚡ WIN"
     autoBtn.TextColor3 = Color3.fromRGB(255, 215, 0)
     autoBtn.BackgroundTransparency = 1
     autoBtn.Font = Enum.Font.GothamBold
-    autoBtn.TextSize = 16
+    autoBtn.TextSize = 14
     autoBtn.Parent = autoFrame
+
+    local autoDesc = Instance.new("TextLabel")
+    autoDesc.Size = UDim2.new(1, 0, 0.4, 0)
+    autoDesc.Position = UDim2.new(0, 0, 0.6, 0)
+    autoDesc.Text = "¡Gana ya!"
+    autoDesc.TextColor3 = Color3.fromRGB(200, 180, 100)
+    autoDesc.BackgroundTransparency = 1
+    autoDesc.Font = Enum.Font.Gotham
+    autoDesc.TextSize = 10
+    autoDesc.Parent = autoFrame
+
     autoBtn.MouseButton1Click:Connect(function()
         spawn(AutoWin)
     end)
 
-    -- Footer
-    local footer = Instance.new("TextLabel")
-    footer.Size = UDim2.new(1, 0, 0, 20)
-    footer.Position = UDim2.new(0, 0, 1, -25)
-    footer.Text = "By Vaxxzu | Beta v3.0 | Prohibida su venta"
-    footer.TextColor3 = Color3.fromRGB(80, 80, 80)
-    footer.BackgroundTransparency = 1
-    footer.Font = Enum.Font.Gotham
-    footer.TextSize = 10
-    footer.Parent = mainFrame
+    -- Animación de apertura/cierre
+    local function togglePanel(open)
+        UI_OPEN = open
+        local targetPos = open and UDim2.new(0.5, -240, 0.5, -45) or UDim2.new(1.5, 0, 0.5, -45)
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(mainFrame, tweenInfo, {Position = targetPos})
+        tween:Play()
+        if open then mainFrame.Visible = true end
+        tween.Completed:Connect(function()
+            if not open then mainFrame.Visible = false end
+        end)
+    end
 
-    -- Stats
-    local stats = Instance.new("TextLabel")
-    stats.Size = UDim2.new(0.8, 0, 0, 16)
-    stats.Position = UDim2.new(0.1, 0, 1, -45)
-    stats.Text = "Ronda: 0/5 | Bajas: 0"
-    stats.TextColor3 = Color3.fromRGB(150, 150, 150)
-    stats.BackgroundTransparency = 1
-    stats.Font = Enum.Font.Gotham
-    stats.TextSize = 11
-    stats.TextXAlignment = Enum.TextXAlignment.Center
-    stats.Parent = mainFrame
+    -- Alternar con el botón flotante
+    toggleBtn.MouseButton1Click:Connect(function()
+        if mainFrame.Visible then
+            togglePanel(false)
+        else
+            mainFrame.Visible = true
+            togglePanel(true)
+        end
+    end)
+
+    -- Stats en el panel (esquina inferior derecha)
+    local statsLabel = Instance.new("TextLabel")
+    statsLabel.Size = UDim2.new(0, 150, 0, 16)
+    statsLabel.Position = UDim2.new(1, -160, 1, -20)
+    statsLabel.Text = "Ronda: 0/5 | Bajas: 0"
+    statsLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    statsLabel.BackgroundTransparency = 1
+    statsLabel.Font = Enum.Font.Gotham
+    statsLabel.TextSize = 11
+    statsLabel.TextXAlignment = Enum.TextXAlignment.Right
+    statsLabel.Parent = mainFrame
 
     spawn(function()
         while true do
             task.wait(0.5)
             local kills = PlayerKills[LocalPlayer.Name] or 0
-            stats.Text = "Ronda: " .. (CurrentRound or 0) .. "/5 | Bajas: " .. kills
+            statsLabel.Text = "Ronda: " .. (CurrentRound or 0) .. "/5 | Bajas: " .. kills
         end
     end)
 
     MainFrame = mainFrame
+    ToggleButton = toggleBtn
     return mainFrame
 end
 
 -- ===================== EVENTOS =====================
 LocalPlayer.CharacterAdded:Connect(function(character)
-    IsSpectator = false
     if CONFIG.Invisible then
         task.wait(0.2)
         ApplyGhostInvisibility(true)
     end
     local humanoid = character:WaitForChild("Humanoid")
     humanoid.Died:Connect(function()
-        IsSpectator = true
         workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
         workspace.CurrentCamera.CFrame = CFrame.new(Vector3.new(0, 50, 0))
     end)
@@ -578,7 +574,8 @@ end)
 
 -- ===================== INICIO =====================
 CreateUI()
-ApplyGhostInvisibility(CONFIG.Invisible)
+-- Aplicar estado inicial (todo desactivado, pero si Invisible está false, aseguramos que no haya highlight)
+ApplyGhostInvisibility(false)
 
 RunService.RenderStepped:Connect(function()
     UpdateEsp()
@@ -590,8 +587,7 @@ end)
 
 LocalPlayer.OnTeleport:Connect(ClearEsp)
 
-print("🔥 DUELOS HACK v3.0 BETA CARGADO")
+print("🔥 DUELOS HACK v4.0 BETA CARGADO")
 print("👤 By Vaxxzu")
-print("🔲 ESP con SelectionBox (estable)")
-print("👻 Fantasma activado")
-print("⚡ AutoWin listo")
+print("🔲 Todas las opciones están DESACTIVADAS por defecto.")
+print("👻 Fantasma: invisible para otros, semi-transparente para ti.")
