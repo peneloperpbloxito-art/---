@@ -1,8 +1,8 @@
 -- ============================================================
--- 🔥 DUELOS HACK v3.2.6 🔥
--- CLON EXACTO DEL MENÚ "MURDERERS VS SHERIFFS" - RYSHUB
+-- 🔥 DUELOS HACK v3.2.6 (MÓVIL / DELTA) 🔥
+-- CLON EXACTO DEL MENÚ "MURDERERS VS SHERIFFS"
 -- Desarrollado por: Vaxxzu
--- TODAS LAS OPCIONES FUNCIONALES CON INDICADORES VISUALES
+-- TODAS LAS OPCIONES FUNCIONALES + TEXTURAS LISAS
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -31,10 +31,11 @@ local CONFIG = {
     InfiniteJump = false,
     Speed = false,
     SpeedValue = 16,
+    SmoothTextures = false,   -- NUEVA OPCIÓN
 }
 
 -- ===================== VARIABLES =====================
-local EspObjects = {}   -- Para SelectionBox o Drawing
+local EspBoxes = {}       -- Para SelectionBox
 local GhostHighlight = nil
 local InfiniteJumpConnection = nil
 local CurrentRound = 0
@@ -42,7 +43,7 @@ local PlayerKills = {}
 local MainFrame = nil
 local ToggleButton = nil
 
--- ===================== FUNCIONES DE UTILIDAD =====================
+-- ===================== FUNCIONES UTILIDAD =====================
 local function GetCharacter()
     return LocalPlayer.Character
 end
@@ -52,10 +53,10 @@ local function GetHumanoid()
     return char and char:FindFirstChild("Humanoid")
 end
 
--- ===================== OPCIÓN: CUCHILLO =====================
+-- ===================== CUCHILLO =====================
 local function ToggleKnife(state)
     CONFIG.Knife = state
-    print("🔪 Cuchillo: " .. (state and "ACTIVADO" or "DESACTIVADO"))
+    print("🔪 Cuchillo: " .. (state and "ON" or "OFF"))
     local char = GetCharacter()
     if not char then return end
     local tool = char:FindFirstChildWhichIsA("Tool")
@@ -135,12 +136,12 @@ local function MoveMouseTo(target, smooth)
     if CONFIG.AimbotBannable then FireWeapon() end
 end
 
--- ===================== ESP (USANDO SELECTIONBOX SI Drawing FALLA) =====================
+-- ===================== ESP (SELECTIONBOX) =====================
 local function ClearEsp()
-    for _, obj in ipairs(EspObjects) do
-        pcall(function() obj:Destroy() end)
+    for _, box in pairs(EspBoxes) do
+        pcall(function() box:Destroy() end)
     end
-    EspObjects = {}
+    EspBoxes = {}
 end
 
 local function UpdateEsp()
@@ -149,7 +150,11 @@ local function UpdateEsp()
         return
     end
 
-    ClearEsp()
+    for player, _ in pairs(EspBoxes) do
+        if not player or not player.Parent then
+            EspBoxes[player] = nil
+        end
+    end
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
@@ -161,42 +166,26 @@ local function UpdateEsp()
         local head = char:FindFirstChild("Head")
         if not head then continue end
 
-        -- Usar SelectionBox (más compatible)
         if CONFIG.Boxes then
-            local box = Instance.new("SelectionBox")
-            box.Adornee = head
-            box.Color3 = Color3.fromRGB(255, 0, 0)
-            box.Transparency = 0.5
-            box.LineThickness = 0.1
-            box.Visible = true
-            box.Parent = head
-            table.insert(EspObjects, box)
+            if not EspBoxes[player] then
+                local box = Instance.new("SelectionBox")
+                box.Adornee = head
+                box.Color3 = Color3.fromRGB(255, 0, 0)
+                box.Transparency = 0.5
+                box.LineThickness = 0.1
+                box.Visible = true
+                box.Parent = head
+                EspBoxes[player] = box
+            else
+                EspBoxes[player].Visible = true
+            end
+        else
+            if EspBoxes[player] then
+                EspBoxes[player]:Destroy()
+                EspBoxes[player] = nil
+            end
         end
 
-        -- Nombre con BillboardGui
-        local nameTag = char:FindFirstChild("NameTagHack")
-        if not nameTag then
-            local bill = Instance.new("BillboardGui")
-            bill.Name = "NameTagHack"
-            bill.Size = UDim2.new(0, 100, 0, 30)
-            bill.StudsOffset = Vector3.new(0, 2.5, 0)
-            bill.AlwaysOnTop = true
-            bill.Parent = char
-
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(1, 0, 1, 0)
-            label.BackgroundTransparency = 1
-            label.Text = player.Name
-            label.TextColor3 = Color3.fromRGB(255,255,255)
-            label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
-            label.TextStrokeTransparency = 0.3
-            label.Font = Enum.Font.GothamBold
-            label.TextSize = 16
-            label.Parent = bill
-            table.insert(EspObjects, bill)
-        end
-
-        -- Hitbox (mostrar más partes)
         if CONFIG.Hitbox then
             local parts = {char:FindFirstChild("UpperTorso"), char:FindFirstChild("LowerTorso"), char:FindFirstChild("LeftArm"), char:FindFirstChild("RightArm"), char:FindFirstChild("LeftLeg"), char:FindFirstChild("RightLeg")}
             for _, part in ipairs(parts) do
@@ -208,14 +197,14 @@ local function UpdateEsp()
                     box.LineThickness = 0.1
                     box.Visible = true
                     box.Parent = part
-                    table.insert(EspObjects, box)
+                    table.insert(EspBoxes, box)
                 end
             end
         end
     end
 end
 
--- ===================== INVISIBLE (FANTASMA) + BURBUJA + TECLA =====================
+-- ===================== INVISIBLE + BURBUJA + TECLA =====================
 local function ApplyGhostInvisibility(state)
     CONFIG.Invisible = state
     local char = GetCharacter()
@@ -279,7 +268,7 @@ local function ApplyGhostInvisibility(state)
         if bubble then bubble:Destroy() end
     end
 
-    print("👻 Fantasma: " .. (state and "ACTIVADO" or "DESACTIVADO"))
+    print("👻 Fantasma: " .. (state and "ON" or "OFF"))
 end
 
 -- ===================== MOVIMIENTO =====================
@@ -330,6 +319,21 @@ local function TriggerEvents()
     end
 end
 
+-- ===================== TEXTURAS LISAS (NUEVA OPCIÓN) =====================
+local function ApplySmoothTextures(state)
+    CONFIG.SmoothTextures = state
+    local material = state and Enum.Material.Plastic or Enum.Material.SmoothPlastic
+    -- Aplicar a todas las partes del workspace (excepto las del jugador local)
+    for _, part in ipairs(workspace:GetDescendants()) do
+        if part:IsA("BasePart") and not part:IsDescendantOf(LocalPlayer.Character) then
+            pcall(function()
+                part.Material = material
+            end)
+        end
+    end
+    print("🧊 Texturas Lisas: " .. (state and "ON" or "OFF"))
+end
+
 -- ===================== CONSTRUCCIÓN DE LA UI (CLON PERFECTO) =====================
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
@@ -338,11 +342,11 @@ local function CreateUI()
 
     -- BOTÓN FLOTANTE (engranaje)
     local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0, 45, 0, 45)
-    toggleBtn.Position = UDim2.new(0, 10, 0.5, -22)
+    toggleBtn.Size = UDim2.new(0, 55, 0, 55)
+    toggleBtn.Position = UDim2.new(0, 10, 0.5, -27)
     toggleBtn.Text = "⚙️"
     toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    toggleBtn.TextSize = 24
+    toggleBtn.TextSize = 30
     toggleBtn.BackgroundColor3 = Color3.fromRGB(10,10,10)
     toggleBtn.BackgroundTransparency = 0.2
     toggleBtn.BorderSizePixel = 2
@@ -354,8 +358,8 @@ local function CreateUI()
 
     -- PANEL PRINCIPAL
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 320, 0, 480)
-    mainFrame.Position = UDim2.new(0.5, -160, 0.5, -240)
+    mainFrame.Size = UDim2.new(0, 340, 0, 520)
+    mainFrame.Position = UDim2.new(0.5, -170, 0.5, -260)
     mainFrame.BackgroundColor3 = Color3.fromRGB(8,8,8)
     mainFrame.BackgroundTransparency = 0.1
     mainFrame.BorderSizePixel = 2
@@ -369,7 +373,7 @@ local function CreateUI()
 
     -- BARRA DE TÍTULO
     local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1,0,0,45)
+    titleBar.Size = UDim2.new(1,0,0,50)
     titleBar.Position = UDim2.new(0,0,0,0)
     titleBar.BackgroundColor3 = Color3.fromRGB(0,0,0)
     titleBar.BackgroundTransparency = 0.3
@@ -383,7 +387,7 @@ local function CreateUI()
     title.TextColor3 = Color3.fromRGB(255,255,255)
     title.BackgroundTransparency = 1
     title.Font = Enum.Font.GothamBold
-    title.TextSize = 18
+    title.TextSize = 20
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = titleBar
 
@@ -399,15 +403,15 @@ local function CreateUI()
     sub.Parent = titleBar
 
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0,30,0,30)
-    closeBtn.Position = UDim2.new(1,-35,0,8)
+    closeBtn.Size = UDim2.new(0,35,0,35)
+    closeBtn.Position = UDim2.new(1,-40,0,8)
     closeBtn.Text = "✕"
     closeBtn.TextColor3 = Color3.fromRGB(200,200,200)
     closeBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
     closeBtn.BackgroundTransparency = 0.5
     closeBtn.BorderSizePixel = 0
     closeBtn.Font = Enum.Font.Gotham
-    closeBtn.TextSize = 16
+    closeBtn.TextSize = 18
     closeBtn.Parent = titleBar
     closeBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
@@ -415,25 +419,25 @@ local function CreateUI()
 
     -- SCROLL
     local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1,-10,1,-55)
-    scroll.Position = UDim2.new(0,5,0,50)
+    scroll.Size = UDim2.new(1,-10,1,-60)
+    scroll.Position = UDim2.new(0,5,0,55)
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
     scroll.ScrollBarThickness = 4
     scroll.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
-    scroll.CanvasSize = UDim2.new(0,0,0,700)
+    scroll.CanvasSize = UDim2.new(0,0,0,780)
     scroll.Parent = mainFrame
 
     -- FUNCIÓN HEADER
     local function createHeader(text, y)
         local h = Instance.new("TextLabel")
-        h.Size = UDim2.new(1,0,0,20)
+        h.Size = UDim2.new(1,0,0,22)
         h.Position = UDim2.new(0,0,0,y)
         h.Text = text
         h.TextColor3 = Color3.fromRGB(150,150,150)
         h.BackgroundTransparency = 1
         h.Font = Enum.Font.GothamBold
-        h.TextSize = 12
+        h.TextSize = 13
         h.TextXAlignment = Enum.TextXAlignment.Center
         h.Parent = scroll
         return h
@@ -442,7 +446,7 @@ local function CreateUI()
     -- FUNCIÓN TOGGLE (con indicador y mensaje en consola)
     local function createToggle(text, desc, callback, y, active)
         local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1,-10,0,40)
+        frame.Size = UDim2.new(1,-10,0,48)
         frame.Position = UDim2.new(0,5,0,y)
         frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
         frame.BackgroundTransparency = 0.3
@@ -450,7 +454,7 @@ local function CreateUI()
         frame.BorderColor3 = Color3.fromRGB(60,60,60)
         frame.Parent = scroll
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0,6)
+        corner.CornerRadius = UDim.new(0,8)
         corner.Parent = frame
 
         local btn = Instance.new("TextButton")
@@ -460,25 +464,25 @@ local function CreateUI()
         btn.TextColor3 = Color3.fromRGB(255,255,255)
         btn.BackgroundTransparency = 1
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 13
+        btn.TextSize = 15
         btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.Parent = frame
 
         local descL = Instance.new("TextLabel")
-        descL.Size = UDim2.new(0.7,0,0,14)
-        descL.Position = UDim2.new(0,5,0,22)
+        descL.Size = UDim2.new(0.7,0,0,16)
+        descL.Position = UDim2.new(0,5,0,28)
         descL.Text = desc
         descL.TextColor3 = Color3.fromRGB(150,150,150)
         descL.BackgroundTransparency = 1
         descL.Font = Enum.Font.Gotham
-        descL.TextSize = 10
+        descL.TextSize = 11
         descL.TextXAlignment = Enum.TextXAlignment.Left
         descL.Parent = frame
 
         -- Indicador circular
         local indicator = Instance.new("Frame")
-        indicator.Size = UDim2.new(0,12,0,12)
-        indicator.Position = UDim2.new(0.9,0,0.5,-6)
+        indicator.Size = UDim2.new(0,14,0,14)
+        indicator.Position = UDim2.new(0.9,0,0.5,-7)
         indicator.BackgroundColor3 = active and Color3.fromRGB(0,200,80) or Color3.fromRGB(60,60,60)
         indicator.BorderSizePixel = 0
         indicator.Parent = frame
@@ -488,7 +492,6 @@ local function CreateUI()
 
         btn.MouseButton1Click:Connect(function()
             callback()
-            -- Cambiar color del indicador
             if indicator.BackgroundColor3 == Color3.fromRGB(0,200,80) then
                 indicator.BackgroundColor3 = Color3.fromRGB(60,60,60)
             else
@@ -499,61 +502,67 @@ local function CreateUI()
         return {Btn = btn, Indicator = indicator}
     end
 
-    -- ===== CONSTRUCCIÓN DE OPCIONES (ORDEN EXACTO DE LA FOTO) =====
+    -- ===== CONSTRUCCIÓN DE OPCIONES (ORDEN EXACTO) =====
     local y = 0
-    createHeader("── SETTINGS ──", y); y = y + 25
-    createHeader("── PLAYER CHEATS ──", y); y = y + 25
+    createHeader("── SETTINGS ──", y); y = y + 27
+    createHeader("── PLAYER CHEATS ──", y); y = y + 27
 
     -- 1. Knife
     createToggle("🔪 Knife", "Activa el cuchillo", function()
         CONFIG.Knife = not CONFIG.Knife
         ToggleKnife(CONFIG.Knife)
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     -- 2. Aimbot (bannable)
     createToggle("🎯 Aimbot (bannable)", "Apunta y dispara instantáneo", function()
         CONFIG.AimbotBannable = not CONFIG.AimbotBannable
         if CONFIG.AimbotBannable then CONFIG.AimbotLegit = false end
         print("🎯 Aimbot Bannable: " .. (CONFIG.AimbotBannable and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     -- 3. Aimbot Legit
     createToggle("🎯 Aimbot Legit", "Apunta suave (menos detectable)", function()
         CONFIG.AimbotLegit = not CONFIG.AimbotLegit
         if CONFIG.AimbotLegit then CONFIG.AimbotBannable = false end
         print("🎯 Aimbot Legit: " .. (CONFIG.AimbotLegit and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     -- 4. ESP & Hitbox
     createToggle("👁️ ESP & Hitbox", "Muestra hitboxes y nombres", function()
         CONFIG.ESP = not CONFIG.ESP
         if not CONFIG.ESP then ClearEsp() end
         print("👁️ ESP: " .. (CONFIG.ESP and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     -- 5. External Scripts
     createToggle("📦 External Scripts", "Scripts externos (beta)", function()
         CONFIG.ExternalScripts = not CONFIG.ExternalScripts
         print("📦 External Scripts: " .. (CONFIG.ExternalScripts and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     -- 6. Events
     createToggle("⚡ Events", "Activa eventos de victoria", function()
         CONFIG.Events = not CONFIG.Events
         if CONFIG.Events then TriggerEvents() end
         print("⚡ Events: " .. (CONFIG.Events and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     -- 7. Boxes
     createToggle("📦 Boxes", "Muestra cajas alrededor de las hitboxes", function()
         CONFIG.Boxes = not CONFIG.Boxes
         if CONFIG.Boxes and not CONFIG.ESP then CONFIG.ESP = true end
         print("📦 Boxes: " .. (CONFIG.Boxes and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
+
+    -- 8. Texturas Lisas (NUEVA)
+    createToggle("🧊 Texturas Lisas", "Quita detalles para mejorar FPS", function()
+        CONFIG.SmoothTextures = not CONFIG.SmoothTextures
+        ApplySmoothTextures(CONFIG.SmoothTextures)
+    end, y, false); y = y + 52
 
     -- Versión
     local ver = Instance.new("TextLabel")
-    ver.Size = UDim2.new(1,0,0,20)
+    ver.Size = UDim2.new(1,0,0,22)
     ver.Position = UDim2.new(0,0,0,y)
     ver.Text = "v3.2.6"
     ver.TextColor3 = Color3.fromRGB(100,100,100)
@@ -562,25 +571,25 @@ local function CreateUI()
     ver.TextSize = 12
     ver.TextXAlignment = Enum.TextXAlignment.Center
     ver.Parent = scroll
-    y = y + 25
+    y = y + 27
 
     -- SECCIÓN INVISIBLE
-    createHeader("── INVISIBLE ──", y); y = y + 25
+    createHeader("── INVISIBLE ──", y); y = y + 27
 
     createToggle("👻 Invisible (Modo Fantasma)", "Te vuelves invisible para otros", function()
         CONFIG.Invisible = not CONFIG.Invisible
         ApplyGhostInvisibility(CONFIG.Invisible)
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     createToggle("🫧 Burbuja Ghost", "Añade una burbuja protectora", function()
         CONFIG.GhostBubble = not CONFIG.GhostBubble
         ApplyGhostInvisibility(CONFIG.Invisible)
         print("🫧 Burbuja: " .. (CONFIG.GhostBubble and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     -- Tecla Invisible
     local keyFrame = Instance.new("Frame")
-    keyFrame.Size = UDim2.new(1,-10,0,35)
+    keyFrame.Size = UDim2.new(1,-10,0,40)
     keyFrame.Position = UDim2.new(0,5,0,y)
     keyFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
     keyFrame.BackgroundTransparency = 0.3
@@ -588,7 +597,7 @@ local function CreateUI()
     keyFrame.BorderColor3 = Color3.fromRGB(60,60,60)
     keyFrame.Parent = scroll
     local keyCorner = Instance.new("UICorner")
-    keyCorner.CornerRadius = UDim.new(0,6)
+    keyCorner.CornerRadius = UDim.new(0,8)
     keyCorner.Parent = keyFrame
 
     local keyLabel = Instance.new("TextLabel")
@@ -598,7 +607,7 @@ local function CreateUI()
     keyLabel.TextColor3 = Color3.fromRGB(255,255,255)
     keyLabel.BackgroundTransparency = 1
     keyLabel.Font = Enum.Font.Gotham
-    keyLabel.TextSize = 13
+    keyLabel.TextSize = 14
     keyLabel.TextXAlignment = Enum.TextXAlignment.Left
     keyLabel.Parent = keyFrame
 
@@ -622,17 +631,17 @@ local function CreateUI()
     y = y + 45
 
     -- SECCIÓN MOVIMIENTO
-    createHeader("── MOVIMIENTO ──", y); y = y + 25
+    createHeader("── MOVIMIENTO ──", y); y = y + 27
 
     createToggle("🦘 Activar Potencia de Salto", "Modifica la altura del salto", function()
         CONFIG.JumpPower = not CONFIG.JumpPower
         ApplyMovementMods()
         print("🦘 Potencia de Salto: " .. (CONFIG.JumpPower and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
-    -- Potencia de Salto (slider)
+    -- Potencia de Salto
     local jumpFrame = Instance.new("Frame")
-    jumpFrame.Size = UDim2.new(1,-10,0,30)
+    jumpFrame.Size = UDim2.new(1,-10,0,35)
     jumpFrame.Position = UDim2.new(0,5,0,y)
     jumpFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
     jumpFrame.BackgroundTransparency = 0.3
@@ -640,7 +649,7 @@ local function CreateUI()
     jumpFrame.BorderColor3 = Color3.fromRGB(60,60,60)
     jumpFrame.Parent = scroll
     local jumpCorner = Instance.new("UICorner")
-    jumpCorner.CornerRadius = UDim.new(0,6)
+    jumpCorner.CornerRadius = UDim.new(0,8)
     jumpCorner.Parent = jumpFrame
 
     local jumpLabel = Instance.new("TextLabel")
@@ -650,7 +659,7 @@ local function CreateUI()
     jumpLabel.TextColor3 = Color3.fromRGB(200,200,200)
     jumpLabel.BackgroundTransparency = 1
     jumpLabel.Font = Enum.Font.Gotham
-    jumpLabel.TextSize = 12
+    jumpLabel.TextSize = 13
     jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
     jumpLabel.Parent = jumpFrame
 
@@ -671,23 +680,23 @@ local function CreateUI()
         jumpBox.Text = tostring(CONFIG.JumpPowerValue)
         if CONFIG.JumpPower then ApplyMovementMods() end
     end)
-    y = y + 35
+    y = y + 40
 
     createToggle("♾️ Activar Salto Infinito", "Salta en el aire infinitamente", function()
         CONFIG.InfiniteJump = not CONFIG.InfiniteJump
         SetupInfiniteJump()
         print("♾️ Salto Infinito: " .. (CONFIG.InfiniteJump and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
     createToggle("💨 Activar Velocidad", "Aumenta la velocidad de movimiento", function()
         CONFIG.Speed = not CONFIG.Speed
         ApplyMovementMods()
         print("💨 Velocidad: " .. (CONFIG.Speed and "ON" or "OFF"))
-    end, y, false); y = y + 45
+    end, y, false); y = y + 52
 
-    -- Velocidad (slider)
+    -- Velocidad
     local speedFrame = Instance.new("Frame")
-    speedFrame.Size = UDim2.new(1,-10,0,30)
+    speedFrame.Size = UDim2.new(1,-10,0,35)
     speedFrame.Position = UDim2.new(0,5,0,y)
     speedFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
     speedFrame.BackgroundTransparency = 0.3
@@ -695,7 +704,7 @@ local function CreateUI()
     speedFrame.BorderColor3 = Color3.fromRGB(60,60,60)
     speedFrame.Parent = scroll
     local speedCorner = Instance.new("UICorner")
-    speedCorner.CornerRadius = UDim.new(0,6)
+    speedCorner.CornerRadius = UDim.new(0,8)
     speedCorner.Parent = speedFrame
 
     local speedLabel = Instance.new("TextLabel")
@@ -705,7 +714,7 @@ local function CreateUI()
     speedLabel.TextColor3 = Color3.fromRGB(200,200,200)
     speedLabel.BackgroundTransparency = 1
     speedLabel.Font = Enum.Font.Gotham
-    speedLabel.TextSize = 12
+    speedLabel.TextSize = 13
     speedLabel.TextXAlignment = Enum.TextXAlignment.Left
     speedLabel.Parent = speedFrame
 
@@ -726,16 +735,16 @@ local function CreateUI()
         speedBox.Text = tostring(CONFIG.SpeedValue)
         if CONFIG.Speed then ApplyMovementMods() end
     end)
-    y = y + 45
+    y = y + 40
 
     scroll.CanvasSize = UDim2.new(0,0,0,y+30)
 
-    -- ALTERNAR PANEL CON EL BOTÓN FLOTANTE
+    -- ALTERNAR PANEL
     toggleBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = not mainFrame.Visible
     end)
 
-    -- KEYBIND PARA INVISIBLE
+    -- KEYBIND
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
         if input.UserInputType == Enum.UserInputType.Keyboard then
@@ -747,7 +756,7 @@ local function CreateUI()
         end
     end)
 
-    -- STATS EN EL PIE
+    -- STATS
     local stats = Instance.new("TextLabel")
     stats.Size = UDim2.new(1,0,0,18)
     stats.Position = UDim2.new(0,0,1,-20)
@@ -816,7 +825,8 @@ end)
 
 LocalPlayer.OnTeleport:Connect(ClearEsp)
 
-print("🔥 DUELOS HACK v3.2.6 CARGADO")
+print("🔥 DUELOS HACK v3.2.6 (MÓVIL) CARGADO")
 print("👤 By Vaxxzu")
 print("🔑 Tecla Invisible: " .. CONFIG.InvisibleKey)
-print("💡 TODAS LAS OPCIONES FUNCIONALES. PRESIONA CUALQUIER BOTÓN PARA VER MENSAJES EN CONSOLA.")
+print("🧊 Texturas Lisas añadida para mejorar FPS")
+print("💡 PRESIONA CUALQUIER BOTÓN PARA VER MENSAJES EN CONSOLA")
