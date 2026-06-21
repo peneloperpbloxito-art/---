@@ -2,7 +2,7 @@
 -- 🔥 DUELOS HACK v3.2.6 (MÓVIL / DELTA) 🔥
 -- CLON EXACTO DEL MENÚ "MURDERERS VS SHERIFFS"
 -- Desarrollado por: Vaxxzu
--- TODAS LAS OPCIONES FUNCIONALES + TEXTURAS LISAS
+-- CON BOTÓN DE CIERRE, ICONO FLOTANTE Y TEXTURAS LISAS
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -31,11 +31,11 @@ local CONFIG = {
     InfiniteJump = false,
     Speed = false,
     SpeedValue = 16,
-    SmoothTextures = false,   -- NUEVA OPCIÓN
+    SmoothTextures = false,
 }
 
 -- ===================== VARIABLES =====================
-local EspBoxes = {}       -- Para SelectionBox
+local EspBoxes = {}
 local GhostHighlight = nil
 local InfiniteJumpConnection = nil
 local CurrentRound = 0
@@ -43,7 +43,7 @@ local PlayerKills = {}
 local MainFrame = nil
 local ToggleButton = nil
 
--- ===================== FUNCIONES UTILIDAD =====================
+-- ===================== UTILIDAD =====================
 local function GetCharacter()
     return LocalPlayer.Character
 end
@@ -136,10 +136,10 @@ local function MoveMouseTo(target, smooth)
     if CONFIG.AimbotBannable then FireWeapon() end
 end
 
--- ===================== ESP (SELECTIONBOX) =====================
+-- ===================== ESP (BILLBOARD + SELECTIONBOX) =====================
 local function ClearEsp()
-    for _, box in pairs(EspBoxes) do
-        pcall(function() box:Destroy() end)
+    for _, obj in ipairs(EspBoxes) do
+        pcall(function() obj:Destroy() end)
     end
     EspBoxes = {}
 end
@@ -150,12 +150,6 @@ local function UpdateEsp()
         return
     end
 
-    for player, _ in pairs(EspBoxes) do
-        if not player or not player.Parent then
-            EspBoxes[player] = nil
-        end
-    end
-
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
         local char = player.Character
@@ -163,11 +157,32 @@ local function UpdateEsp()
         local hum = char:FindFirstChild("Humanoid")
         if not hum or hum.Health <= 0 then continue end
 
-        local head = char:FindFirstChild("Head")
-        if not head then continue end
+        -- Nombre (Billboard)
+        local nameTag = char:FindFirstChild("NameTagHack")
+        if not nameTag then
+            local bill = Instance.new("BillboardGui")
+            bill.Name = "NameTagHack"
+            bill.Size = UDim2.new(0, 120, 0, 30)
+            bill.StudsOffset = Vector3.new(0, 2.5, 0)
+            bill.AlwaysOnTop = true
+            bill.Parent = char
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(1, 0, 1, 0)
+            label.BackgroundTransparency = 1
+            label.Text = player.Name
+            label.TextColor3 = Color3.fromRGB(255,255,255)
+            label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+            label.TextStrokeTransparency = 0.3
+            label.Font = Enum.Font.GothamBold
+            label.TextSize = 16
+            label.Parent = bill
+            table.insert(EspBoxes, bill)
+        end
 
+        -- Boxes (SelectionBox)
         if CONFIG.Boxes then
-            if not EspBoxes[player] then
+            local head = char:FindFirstChild("Head")
+            if head then
                 local box = Instance.new("SelectionBox")
                 box.Adornee = head
                 box.Color3 = Color3.fromRGB(255, 0, 0)
@@ -175,17 +190,11 @@ local function UpdateEsp()
                 box.LineThickness = 0.1
                 box.Visible = true
                 box.Parent = head
-                EspBoxes[player] = box
-            else
-                EspBoxes[player].Visible = true
-            end
-        else
-            if EspBoxes[player] then
-                EspBoxes[player]:Destroy()
-                EspBoxes[player] = nil
+                table.insert(EspBoxes, box)
             end
         end
 
+        -- Hitbox (más partes)
         if CONFIG.Hitbox then
             local parts = {char:FindFirstChild("UpperTorso"), char:FindFirstChild("LowerTorso"), char:FindFirstChild("LeftArm"), char:FindFirstChild("RightArm"), char:FindFirstChild("LeftLeg"), char:FindFirstChild("RightLeg")}
             for _, part in ipairs(parts) do
@@ -319,28 +328,25 @@ local function TriggerEvents()
     end
 end
 
--- ===================== TEXTURAS LISAS (NUEVA OPCIÓN) =====================
+-- ===================== TEXTURAS LISAS =====================
 local function ApplySmoothTextures(state)
     CONFIG.SmoothTextures = state
-    local material = state and Enum.Material.Plastic or Enum.Material.SmoothPlastic
-    -- Aplicar a todas las partes del workspace (excepto las del jugador local)
+    local mat = state and Enum.Material.Plastic or Enum.Material.SmoothPlastic
     for _, part in ipairs(workspace:GetDescendants()) do
         if part:IsA("BasePart") and not part:IsDescendantOf(LocalPlayer.Character) then
-            pcall(function()
-                part.Material = material
-            end)
+            pcall(function() part.Material = mat end)
         end
     end
     print("🧊 Texturas Lisas: " .. (state and "ON" or "OFF"))
 end
 
--- ===================== CONSTRUCCIÓN DE LA UI (CLON PERFECTO) =====================
+-- ===================== CONSTRUCCIÓN DE LA GUI (CLON PERFECTO) =====================
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "DuelosHackUI"
     screenGui.Parent = LocalPlayer.PlayerGui
 
-    -- BOTÓN FLOTANTE (engranaje)
+    -- ICONO FLOTANTE (engranaje)
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 55, 0, 55)
     toggleBtn.Position = UDim2.new(0, 10, 0.5, -27)
@@ -356,7 +362,7 @@ local function CreateUI()
     corner.CornerRadius = UDim.new(1,0)
     corner.Parent = toggleBtn
 
-    -- PANEL PRINCIPAL
+    -- PANEL PRINCIPAL (ventana)
     local mainFrame = Instance.new("Frame")
     mainFrame.Size = UDim2.new(0, 340, 0, 520)
     mainFrame.Position = UDim2.new(0.5, -170, 0.5, -260)
@@ -402,6 +408,7 @@ local function CreateUI()
     sub.TextXAlignment = Enum.TextXAlignment.Right
     sub.Parent = titleBar
 
+    -- BOTÓN CERRAR (✕)
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0,35,0,35)
     closeBtn.Position = UDim2.new(1,-40,0,8)
@@ -428,7 +435,7 @@ local function CreateUI()
     scroll.CanvasSize = UDim2.new(0,0,0,780)
     scroll.Parent = mainFrame
 
-    -- FUNCIÓN HEADER
+    -- FUNCIONES HEADER Y TOGGLE
     local function createHeader(text, y)
         local h = Instance.new("TextLabel")
         h.Size = UDim2.new(1,0,0,22)
@@ -443,7 +450,6 @@ local function CreateUI()
         return h
     end
 
-    -- FUNCIÓN TOGGLE (con indicador y mensaje en consola)
     local function createToggle(text, desc, callback, y, active)
         local frame = Instance.new("Frame")
         frame.Size = UDim2.new(1,-10,0,48)
@@ -479,7 +485,6 @@ local function CreateUI()
         descL.TextXAlignment = Enum.TextXAlignment.Left
         descL.Parent = frame
 
-        -- Indicador circular
         local indicator = Instance.new("Frame")
         indicator.Size = UDim2.new(0,14,0,14)
         indicator.Position = UDim2.new(0.9,0,0.5,-7)
@@ -502,59 +507,51 @@ local function CreateUI()
         return {Btn = btn, Indicator = indicator}
     end
 
-    -- ===== CONSTRUCCIÓN DE OPCIONES (ORDEN EXACTO) =====
+    -- ===== CONSTRUCCIÓN DE OPCIONES (ORDEN EXACTO DE LA FOTO) =====
     local y = 0
     createHeader("── SETTINGS ──", y); y = y + 27
     createHeader("── PLAYER CHEATS ──", y); y = y + 27
 
-    -- 1. Knife
     createToggle("🔪 Knife", "Activa el cuchillo", function()
         CONFIG.Knife = not CONFIG.Knife
         ToggleKnife(CONFIG.Knife)
     end, y, false); y = y + 52
 
-    -- 2. Aimbot (bannable)
     createToggle("🎯 Aimbot (bannable)", "Apunta y dispara instantáneo", function()
         CONFIG.AimbotBannable = not CONFIG.AimbotBannable
         if CONFIG.AimbotBannable then CONFIG.AimbotLegit = false end
         print("🎯 Aimbot Bannable: " .. (CONFIG.AimbotBannable and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- 3. Aimbot Legit
     createToggle("🎯 Aimbot Legit", "Apunta suave (menos detectable)", function()
         CONFIG.AimbotLegit = not CONFIG.AimbotLegit
         if CONFIG.AimbotLegit then CONFIG.AimbotBannable = false end
         print("🎯 Aimbot Legit: " .. (CONFIG.AimbotLegit and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- 4. ESP & Hitbox
     createToggle("👁️ ESP & Hitbox", "Muestra hitboxes y nombres", function()
         CONFIG.ESP = not CONFIG.ESP
         if not CONFIG.ESP then ClearEsp() end
         print("👁️ ESP: " .. (CONFIG.ESP and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- 5. External Scripts
     createToggle("📦 External Scripts", "Scripts externos (beta)", function()
         CONFIG.ExternalScripts = not CONFIG.ExternalScripts
         print("📦 External Scripts: " .. (CONFIG.ExternalScripts and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- 6. Events
     createToggle("⚡ Events", "Activa eventos de victoria", function()
         CONFIG.Events = not CONFIG.Events
         if CONFIG.Events then TriggerEvents() end
         print("⚡ Events: " .. (CONFIG.Events and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- 7. Boxes
     createToggle("📦 Boxes", "Muestra cajas alrededor de las hitboxes", function()
         CONFIG.Boxes = not CONFIG.Boxes
         if CONFIG.Boxes and not CONFIG.ESP then CONFIG.ESP = true end
         print("📦 Boxes: " .. (CONFIG.Boxes and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- 8. Texturas Lisas (NUEVA)
     createToggle("🧊 Texturas Lisas", "Quita detalles para mejorar FPS", function()
         CONFIG.SmoothTextures = not CONFIG.SmoothTextures
         ApplySmoothTextures(CONFIG.SmoothTextures)
@@ -639,7 +636,7 @@ local function CreateUI()
         print("🦘 Potencia de Salto: " .. (CONFIG.JumpPower and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- Potencia de Salto
+    -- Slider Potencia de Salto
     local jumpFrame = Instance.new("Frame")
     jumpFrame.Size = UDim2.new(1,-10,0,35)
     jumpFrame.Position = UDim2.new(0,5,0,y)
@@ -694,7 +691,7 @@ local function CreateUI()
         print("💨 Velocidad: " .. (CONFIG.Speed and "ON" or "OFF"))
     end, y, false); y = y + 52
 
-    -- Velocidad
+    -- Slider Velocidad
     local speedFrame = Instance.new("Frame")
     speedFrame.Size = UDim2.new(1,-10,0,35)
     speedFrame.Position = UDim2.new(0,5,0,y)
@@ -739,12 +736,12 @@ local function CreateUI()
 
     scroll.CanvasSize = UDim2.new(0,0,0,y+30)
 
-    -- ALTERNAR PANEL
+    -- ALTERNAR PANEL CON EL BOTÓN FLOTANTE
     toggleBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = not mainFrame.Visible
     end)
 
-    -- KEYBIND
+    -- KEYBIND PARA INVISIBLE
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
         if input.UserInputType == Enum.UserInputType.Keyboard then
@@ -828,5 +825,5 @@ LocalPlayer.OnTeleport:Connect(ClearEsp)
 print("🔥 DUELOS HACK v3.2.6 (MÓVIL) CARGADO")
 print("👤 By Vaxxzu")
 print("🔑 Tecla Invisible: " .. CONFIG.InvisibleKey)
-print("🧊 Texturas Lisas añadida para mejorar FPS")
+print("🧊 Texturas Lisas añadida")
 print("💡 PRESIONA CUALQUIER BOTÓN PARA VER MENSAJES EN CONSOLA")
